@@ -75,7 +75,7 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
 ## 版本管理
 
-git 已初始化（仅本地，无 remote）。每个作业完成后提交一次，commit message 说清这个作业是干什么的。
+git 已初始化（仅本地，无 remote）。提交粒度与 commit message 格式见 `.claude/rules/git.md`。
 
 ## Reference
 
