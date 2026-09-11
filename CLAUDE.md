@@ -14,7 +14,7 @@ MATLAB 已安装调试完成，不需要再折腾环境。
 export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
 # 跑脚本（-batch 非交互，跑完自动退出，出错返回非零退出码）
-"$MATLAB" -batch "run('scripts/homework1.m')"
+"$MATLAB" -batch "run('hw01-bouncingBall/hw01_bouncingBall.m')"
 
 # 行为跟版本相关时，把版本一起记进输出
 "$MATLAB" -batch "version"
@@ -59,19 +59,29 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
 另外：
 
-- 文件名必须和它定义的主函数名完全一致（`functions/solveQuadratic.m` 里是 `function solveQuadratic`）。
+- 文件名必须和它定义的主函数名完全一致（`solveQuadratic.m` 里是 `function solveQuadratic`）。
 - 用到较新特性时注明版本：`% Requires R2023a+`。
 - 用 `arguments` 块校验输入（R2019b+），或 `narginchk` / `validateattributes`。
 - 函数头写 H1 行 + 功能说明 + 输入输出 + 一个调用示例。
 - 画图给全 `title` / `xlabel` / `ylabel`，多条曲线加 `legend`。
-- 脚本顶部 `addpath('functions')`；`clear; clc; close all;` 只在脚本里用，函数内部禁止。
+- 函数与调用它的脚本放同目录，MATLAB 直接解析，**不要写 `addpath`**；`clear; clc; close all;` 只在脚本里用，函数内部禁止。
 - 报错写清"问题 + 怎么修"：`error('matlab_test:badInput', '输入必须是正数')`。
+
+## 目录结构：一作业一目录
+
+每份作业是顶层一个自包含目录 `hw<NN>-<关键词>/`，内含：题目原文 `problem.md`、
+脚本 `hw<NN>_<行为名>.m`、该作业专用函数（与脚本同级）、论述 `notes.md`、产物 `outputs/`。
+顶层**不再有** `scripts/` `problems/` `notes/` `outputs/` 这类按类型分的公共目录。
+
+- **函数与脚本同目录，不要写 `addpath`** —— MATLAB 直接解析同目录函数。
+  这条是实测结论：跨目录调用（cwd 在 `/tmp`）下同目录函数依然解析成功。
+- 跨作业复用的函数确实出现时，再提升到顶层共享目录；不要提前建。
 
 ## 脚本约定
 
-- 一个作业一个脚本，按行为命名（`scripts/solveQuadratic.m`），不要 `test1.m`。
+- 一个作业一个脚本，按行为命名（`hw01_bouncingBall.m`），不要 `test1.m`。
 - 脚本自带注释说明**预期结果**，或它复现的**确切错误**。
-- 单文件、自包含 —— 不要外部数据文件，除非作业本身需要。
+- 自包含 —— 不要外部数据文件，除非作业本身需要。
 
 ## 版本管理
 
