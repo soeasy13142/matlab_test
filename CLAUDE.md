@@ -32,7 +32,7 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 需要问的典型情况：
 
 - 作业要求本身有歧义，或存在不止一种合理解法
-- **这次作业要交普通 `.m` 脚本还是 Live Script**（两种都可能，不要预设）
+- ~~要交普通 `.m` 还是 Live Script~~ → **已明确：普通 `.m`**，不要再按 Live Script 写（见「脚本约定」）
 - 要改动我已有的代码或文件
 - 我给的描述前后不一致，或漏了关键信息
 - 你不确定我想要的输出形式（数值？图？脚本？）
@@ -70,7 +70,7 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 ## 目录结构：一作业一目录
 
 每份作业是顶层一个自包含目录 `hw<NN>-<关键词>/`，内含：题目原文 `problem.md`、
-脚本 `hw<NN>_<行为名>.m`、该作业专用函数（与脚本同级）、论述 `notes.md`、产物 `outputs/`。
+脚本 `hw<NN>_<行为名>.m`、该作业专用函数（与脚本同级）、论述 `notes.md`。
 顶层**不再有** `scripts/` `problems/` `notes/` `outputs/` 这类按类型分的公共目录。
 
 - **函数与脚本同目录，不要写 `addpath`** —— MATLAB 直接解析同目录函数。
@@ -79,6 +79,11 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
 ## 脚本约定
 
+- **普通 `.m` 脚本**，不要 Live Script 形态。具体说：不写 `%[text]` / `%[appendix]` /
+  `%[output:*]` 这些 Live Code 标记，也不用 `%%` 分节 —— 从第一行到最后一行是连续代码。
+- 使用者的操作就是**在编辑器里点运行**：命令窗口打印结果，图表用 `figure` 弹窗。
+  返回值用 `fprintf` 带标签打印，不要靠「不加分号」隐式回显。
+- 脚本不写文件（不导出 png、不存 .mat）。产物就是那个弹出来的窗口。
 - 一个作业一个脚本，按行为命名（`hw01_bouncingBall.m`），不要 `test1.m`。
 - 脚本自带注释说明**预期结果**，或它复现的**确切错误**。
 - 自包含 —— 不要外部数据文件，除非作业本身需要。
