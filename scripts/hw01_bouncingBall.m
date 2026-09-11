@@ -60,6 +60,16 @@ title("弹起高度随落地次数变化")
 sgtitle("Plot by " + STUDENT_SIGNATURE)
 
 %%
+%[text] ## 导出绘图结果
+%[text] 以 `.m` 脚本形式交作业时需要单独附上图片，这里一并导出到 `outputs/`，重跑本脚本即可刷新。
+
+outputFolder = fullfile(scriptFolder, "..", "outputs");
+if ~isfolder(outputFolder)
+    mkdir(outputFolder);
+end
+exportgraphics(gcf, fullfile(outputFolder, "hw01.png"), "Resolution", 150);
+
+%%
 %[text] ---
 %[text] 作业一 · 基础要求 2
 
