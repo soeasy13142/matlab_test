@@ -7,7 +7,7 @@
 %       f(t) = (4/pi) * [ sin(w0*t) + sin(3*w0*t)/3 + sin(5*w0*t)/5 + ... ],
 %       w0 = 2*pi/T
 % 本脚本做两件事：
-%   1. 取最高 2N+1 次谐波（N = 3、10、50、100）得到截断近似式，用 subplot 排成
+%   1. 取截断到第 N 次谐波的近似式（N = 3、10、50、100），用 subplot 排成
 %      2 行 2 列，观察逼近效果随 N 的变化；
 %   2. 取 N = 5，用三维瀑布图与二维叠加图各画一幅，展示基波、各次谐波、合成波
 %      与周期矩形波之间的关系。
@@ -15,7 +15,7 @@
 % 预期结果：
 %   · 弹出 3 个图形窗口：一幅 2x2 子图、一幅三维瀑布图、一幅二维叠加图；
 %   · 2x2 子图中 N 越大波形越贴近矩形波，但跳变点附近的过冲始终存在（吉布斯现象），
-%     过冲峰值稳定在 1.179 附近而不随 N 减小；
+%     N >= 10 时过冲峰值稳定在 1.179 附近而不随 N 减小；
 %   · 命令窗口打印各 N 下的过冲峰值与逼近误差。
 
 clear; clc; close all;
@@ -23,17 +23,16 @@ clear; clc; close all;
 STUDENT_SIGNATURE = "顾皓天0242010213";
 PERIOD     = 1;                   % 周期 T，单位 s
 NUM_PERIOD = 3;                   % 绘图显示的周期数
-NUM_SAMPLE = 30001;               % 采样点数，取 4 的倍数加 1，使跳变点恰好落在网格上。
-                                  % 跳变沿附近的振铃宽度仅约 T/(2(2N+1))，网格太疏会
-                                  % 低估 RMSE（N=100 时 6001 点偏低约 7%，30001 点约 1%）
+NUM_SAMPLE = 30001;               % 采样点数，取 2*NUM_PERIOD 的倍数加 1，使跳变点恰好
+                                  % 落在网格上。跳变沿附近的振铃宽度仅约 T/(2N)，
+                                  % 网格太疏会同时低估 RMSE 与过冲峰值
 N_LIST     = [3, 10, 50, 100];    % 第二问要求的 N 取值
 N_3D       = 5;                   % 第三问要求的 N 取值
 EDGE_GUARD = 0.02;                % 统计误差时剔除跳变点邻域的半宽，单位 s
 Y_LIMIT    = 1.5;                 % 纵轴半幅，需覆盖吉布斯过冲峰值（约 1.179）
 
-% 第三问的画图外观：六条谐波靠「线型 + 颜色」两两区分。MATLAB 只有 4 种线型，
-% 故线型循环使用，再配以互不相同的颜色。
-LINE_STYLE_POOL = {"-", "--", ":", "-."};
+% 第三问的画图外观：三条谐波各用一种线型，再配以互不相同的颜色。
+LINE_STYLE_POOL = {"-", "--", ":"};
 
 t = linspace(0, NUM_PERIOD * PERIOD, NUM_SAMPLE);
 
@@ -48,7 +47,7 @@ jumpMask = any(abs(t(:) - jumpTime) < EDGE_GUARD, 2)';
 % ---------- 第二问：N = 3、10、50、100 的 2x2 子图 ----------
 figure("Name", "作业二：不同 N 下的傅里叶级数近似");
 
-fprintf("第二问：最高 2N+1 次谐波截断近似的误差指标\n");
+fprintf("第二问：截断到第 N 次谐波的近似式误差指标\n");
 fprintf("%4s %10s %12s %14s %16s\n", ...
     "N", "保留项数", "过冲峰值", "全区间RMSE", "边沿外最大误差");
 
@@ -67,17 +66,17 @@ for ii = 1:numel(N_LIST)
     ylim([-Y_LIMIT, Y_LIMIT])
     legend("周期矩形波", "傅里叶级数近似", "Location", "northeast")
     title(["Fourier series by " + STUDENT_SIGNATURE; ...
-           sprintf("N = %d，最高 %d 次谐波", N, 2*N + 1)])
+           sprintf("N = %d，保留 %d 项", N, numel(1:2:N))])
 
     rmseAll   = sqrt(mean((ftApprox - ftIdeal).^2));
     maxErrOut = max(abs(ftApprox(~jumpMask) - ftIdeal(~jumpMask)));
     fprintf("%4d %10d %12.4f %14.6f %16.6f\n", ...
-        N, N + 1, max(ftApprox), rmseAll, maxErrOut);
+        N, numel(1:2:N), max(ftApprox), rmseAll, maxErrOut);
 end
 
 % ---------- 第三问：N = 5 的基波、谐波、合成波与矩形波 ----------
 omega0        = 2 * pi / PERIOD;
-harmonicOrder = 1:2:(2*N_3D + 1);      % 1, 3, ..., 11，共 6 次谐波
+harmonicOrder = 1:2:N_3D;              % 1, 3, 5，共 3 次谐波
 numHarmonic   = numel(harmonicOrder);
 
 % 每一行是一条谐波分量，第 k 行对应 harmonicOrder(k) 次谐波，幅值为 4/(pi*n)。
@@ -110,7 +109,7 @@ zlabel("f(t)")
 yticks([harmonicOrder, LEVEL_SYNTH, LEVEL_IDEAL])
 yticklabels([compose("%d 次谐波", harmonicOrder), "合成波", "周期矩形波"])
 title(["Fourier series by " + STUDENT_SIGNATURE; ...
-       sprintf("N = %d，最高 %d 次谐波的三维展开", N_3D, 2*N_3D + 1)])
+       sprintf("N = %d 时基波、谐波与合成波的三维展开", N_3D)])
 legend([compose("%d 次谐波", harmonicOrder), "合成波", "周期矩形波"], ...
     "Location", "northeast")
 view(-40, 25)
