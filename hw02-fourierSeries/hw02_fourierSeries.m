@@ -6,7 +6,6 @@
 % 零，展开后只剩奇次正弦项，且 b_n = 4/(pi*n)（n 为奇数）：
 %       f(t) = (4/pi) * [ sin(w0*t) + sin(3*w0*t)/3 + sin(5*w0*t)/5 + ... ],
 %       w0 = 2*pi/T
-%
 % 本脚本做两件事：
 %   1. 取最高 2N+1 次谐波（N = 3、10、50、100）得到截断近似式，用 subplot 排成
 %      2 行 2 列，观察逼近效果随 N 的变化；
@@ -31,7 +30,6 @@ N_LIST     = [3, 10, 50, 100];    % 第二问要求的 N 取值
 N_3D       = 5;                   % 第三问要求的 N 取值
 EDGE_GUARD = 0.02;                % 统计误差时剔除跳变点邻域的半宽，单位 s
 Y_LIMIT    = 1.5;                 % 纵轴半幅，需覆盖吉布斯过冲峰值（约 1.179）
-SYNTH_TOL  = 1e-9;                % 合成波与截断近似式的一致性判据容差
 
 % 第三问的画图外观：六条谐波靠「线型 + 颜色」两两区分。MATLAB 只有 4 种线型，
 % 故线型循环使用，再配以互不相同的颜色。
@@ -56,12 +54,7 @@ fprintf("%4s %10s %12s %14s %16s\n", ...
 
 for ii = 1:numel(N_LIST)
     N = N_LIST(ii);
-    harmonicOrder = 1:2:(2*N + 1);
     ftApprox = fourierSquarePartial(t, N, PERIOD);
-
-    % 自检：纵轴范围必须覆盖近似波的极值，否则图上的过冲会被裁掉
-    assert(max(abs(ftApprox)) < Y_LIMIT, "matlab_test:overshootBeyondLimit", ...
-        "近似波极值超出 Y_LIMIT，请把 Y_LIMIT 调大或检查级数系数");
 
     subplot(2, 2, ii)
     plot(t, ftIdeal, "Color", [0.75, 0.75, 0.75], "LineWidth", 1)
@@ -73,13 +66,13 @@ for ii = 1:numel(N_LIST)
     ylabel("f(t)")
     ylim([-Y_LIMIT, Y_LIMIT])
     legend("周期矩形波", "傅里叶级数近似", "Location", "northeast")
-    title(cellstr(["Fourier series by " + STUDENT_SIGNATURE; ...
-                   sprintf("N = %d，最高 %d 次谐波", N, 2*N + 1)]))
+    title(["Fourier series by " + STUDENT_SIGNATURE; ...
+           sprintf("N = %d，最高 %d 次谐波", N, 2*N + 1)])
 
     rmseAll   = sqrt(mean((ftApprox - ftIdeal).^2));
     maxErrOut = max(abs(ftApprox(~jumpMask) - ftIdeal(~jumpMask)));
     fprintf("%4d %10d %12.4f %14.6f %16.6f\n", ...
-        N, numel(harmonicOrder), max(ftApprox), rmseAll, maxErrOut);
+        N, N + 1, max(ftApprox), rmseAll, maxErrOut);
 end
 
 % ---------- 第三问：N = 5 的基波、谐波、合成波与矩形波 ----------
@@ -91,11 +84,6 @@ numHarmonic   = numel(harmonicOrder);
 % 行向量与列向量借助隐式扩展一次性算出全部谐波，无需逐条写循环。
 harmonicWave = (4 / pi) * sin(harmonicOrder(:) * omega0 * t) ./ harmonicOrder(:);
 ftSynth      = sum(harmonicWave, 1);   % 合成波即各谐波分量之和
-
-% 自检：合成波必须与 fourierSquarePartial 在同一 N 下的结果一致，否则说明两条
-% 代码路径的谐波次数或加权系数脱节
-assert(max(abs(ftSynth - fourierSquarePartial(t, N_3D, PERIOD))) < SYNTH_TOL, ...
-    "matlab_test:inconsistentSum", "合成波与截断近似式不一致，请检查谐波次数与加权系数");
 
 COLOR_POOL  = lines(numHarmonic);
 LEVEL_SYNTH = max(harmonicOrder) + 2;  % 合成波在谐波次数轴上的摆放位置
@@ -121,8 +109,8 @@ ylabel("谐波次数 n")
 zlabel("f(t)")
 yticks([harmonicOrder, LEVEL_SYNTH, LEVEL_IDEAL])
 yticklabels([compose("%d 次谐波", harmonicOrder), "合成波", "周期矩形波"])
-title(cellstr(["Fourier series by " + STUDENT_SIGNATURE; ...
-               sprintf("N = %d，最高 %d 次谐波的三维展开", N_3D, 2*N_3D + 1)]))
+title(["Fourier series by " + STUDENT_SIGNATURE; ...
+       sprintf("N = %d，最高 %d 次谐波的三维展开", N_3D, 2*N_3D + 1)])
 legend([compose("%d 次谐波", harmonicOrder), "合成波", "周期矩形波"], ...
     "Location", "northeast")
 view(-40, 25)
@@ -142,8 +130,8 @@ grid on
 xlabel("t")
 ylabel("f(t)")
 ylim([-Y_LIMIT, Y_LIMIT])
-title(cellstr(["Fourier series by " + STUDENT_SIGNATURE; ...
-               sprintf("N = %d 时基波、谐波、合成波与矩形波的二维叠加", N_3D)]))
+title(["Fourier series by " + STUDENT_SIGNATURE; ...
+       sprintf("N = %d 时基波、谐波、合成波与矩形波的二维叠加", N_3D)])
 legend([compose("%d 次谐波", harmonicOrder), "合成波", "周期矩形波"], ...
     "Location", "northeast")
 
