@@ -22,8 +22,7 @@
 
 clear; clc; close all;
 
-STUDENT_SIGNATURE = "顾皓天0242010213";   % 改成「姓名汉字+学号」，如 "小明2121021145"
-
+STUDENT_SIGNATURE = "顾皓天0242010213";
 PERIOD     = 1;                   % 周期 T，单位 s
 NUM_PERIOD = 3;                   % 绘图显示的周期数
 NUM_SAMPLE = 30001;               % 采样点数，取 4 的倍数加 1，使跳变点恰好落在网格上。
