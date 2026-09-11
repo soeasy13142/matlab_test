@@ -6,10 +6,8 @@
 
 clear; clc; close all;
 
-% 让脚本无论从哪个工作目录运行都能找到 functions/（直接写 addpath("functions")
-% 只在当前目录恰为仓库根目录时才有效）
+% 脚本与 bounceBall.m 同在本目录，MATLAB 直接解析同目录函数，无需 addpath
 scriptFolder = fileparts(mfilename("fullpath"));
-addpath(fullfile(scriptFolder, "..", "functions")); %[output:36346661]
 
 STUDENT_SIGNATURE = "顾皓天0242010213";   % 改成「姓名汉字+学号」，如 "小明2121021145"
 
@@ -62,7 +60,7 @@ sgtitle("Plot by " + STUDENT_SIGNATURE) %[output:3e485fed]
 %[text] ## 导出绘图结果
 %[text] 以 `.m` 脚本形式交作业时需要单独附上图片，这里一并导出到 `outputs/`，重跑本脚本即可刷新。
 
-outputFolder = fullfile(scriptFolder, "..", "outputs");
+outputFolder = fullfile(scriptFolder, "outputs");
 if ~isfolder(outputFolder)
     mkdir(outputFolder);
 end
