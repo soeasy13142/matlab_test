@@ -16,13 +16,6 @@ function ft = squareWave(t, T)
 %   示例
 %       t = linspace(0, 3, 601);
 %       plot(t, squareWave(t, 1))
-%
-%   Requires R2019b+（使用了 arguments 块）
-
-arguments
-    t {mustBeNumeric, mustBeReal}
-    T (1,1) {mustBeNumeric, mustBeReal, mustBePositive}
-end
 
 phase = mod(t, T);      % 把各时刻折合到一个周期 [0, T) 内
 ft = ones(size(t));     % 先整段取前半周期的 +1

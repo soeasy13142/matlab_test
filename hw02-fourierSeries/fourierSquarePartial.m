@@ -15,14 +15,6 @@ function ft = fourierSquarePartial(t, N, T)
 %   示例
 %       t = linspace(0, 3, 601);
 %       plot(t, fourierSquarePartial(t, 3, 1))   % 最高 7 次谐波
-%
-%   Requires R2019b+（使用了 arguments 块）
-
-arguments
-    t {mustBeNumeric, mustBeReal}
-    N (1,1) {mustBeNumeric, mustBeReal, mustBeNonnegative, mustBeInteger}
-    T (1,1) {mustBeNumeric, mustBeReal, mustBePositive}
-end
 
 omega0 = 2 * pi / T;
 harmonicOrder = 1:2:(2*N + 1);      % 保留下来的奇次谐波次数 1, 3, ..., 2N+1

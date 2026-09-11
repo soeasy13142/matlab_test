@@ -60,7 +60,6 @@ export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
 - 文件名必须和它定义的主函数名完全一致（`solveQuadratic.m` 里是 `function solveQuadratic`）。
 - 用到较新特性时注明版本：`% Requires R2023a+`。
-- 用 `arguments` 块校验输入（R2019b+），或 `narginchk` / `validateattributes`。
 - 函数头写 H1 行 + 功能说明 + 输入输出 + 一个调用示例。
 - 画图给全 `title` / `xlabel` / `ylabel`，多条曲线加 `legend`。
 - 函数与调用它的脚本放同目录，MATLAB 直接解析，**不要写 `addpath`**；`clear; clc; close all;` 只在脚本里用，函数内部禁止。
