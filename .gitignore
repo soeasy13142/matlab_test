@@ -1,0 +1,45 @@
+# 基于 MathWorks 官方 MATLAB 模板裁剪
+# https://github.com/MathWorks-Teaching-Resources/Numerical-Methods-with-Applications
+
+# macOS
+.DS_Store
+
+# MATLAB 自动保存文件
+*.asv
+*.m~
+*.autosave
+*.slx.r*
+*.mdl.r*
+
+# MATLAB Drive
+*.MATLABDriveTag
+
+# 编译产物
+*.mex*
+*.p
+
+# 打包 / 部署产物
+*.mlappinstall
+*.mltbx
+*.ctf
+
+# 生成的帮助索引
+helpsearch*/
+
+# 代码生成文件夹
+slprj/
+sccprj/
+codegen/
+
+# 代码生成产物
+*.eep
+*.elf
+*.hex
+*.bin
+
+# 缓存
+*.slxc
+
+# 刻意不忽略：*.mat 和 *.zip
+# 作业里的 .mat 可能是要提交的数据，.zip 可能是交作业的压缩包。
+# 官方模板也只忽略特定命名的 .mat，没有全局忽略。
