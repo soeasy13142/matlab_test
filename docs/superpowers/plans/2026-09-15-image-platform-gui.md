@@ -614,6 +614,9 @@ registry     = imgRegistry();
 currentImage = [];      % 已载入的灰度图，未载入时为 []
 currentName  = "";      % 文件名，显示在状态栏
 resultImage  = [];      % 上一次「执行」的结果，未执行时为 []
+resultOutput = "";      % 产出 resultImage 的那个算法的 Output 类型。
+                        % 不能现查 registry(selectedIdx) —— 用户可以在算完之后
+                        % 改选别的算法，那时 selectedIdx 已经指向别的算法了。
 isColorInput = false;   % 原图是否为彩色，用于状态栏标注
 selectedIdx  = 0;       % 当前选中的算法下标，0 表示未选
 
@@ -684,27 +687,47 @@ refreshEnableState();
         end
 
         fullPath = fullfile(folder, fileName);
+
+        % 读图、转灰度、显示三段都包在同一个 try 里。只包 imread 是不够的：
+        % 4 通道图（RGBA / CMYK 的 TIFF）会在 rgb2gray 处抛错，而打开对话框的
+        % 过滤器里就有 *.gif 和 *.tif。抛在 try 外面的话，回调会中途死掉，
+        % 留下「图像已换、状态栏没更新、按钮没刷新」的半截状态。
         try
             raw = imread(fullPath);
+
+            % +img/ 里的算法开头都有 ~ismatrix(I) 检查，彩色图会直接报错。
+            % 这里统一转灰度，并在状态栏说明，免得用户以为显示的就是原色。
+            isColor = (ndims(raw) == 3);
+            if isColor
+                loadedImage = rgb2gray(raw);
+            else
+                loadedImage = raw;
+            end
+
+            % rgb2gray 之后还不是二维的（多帧图之类），说明这个文件超出
+            % 支持范围，与其让后面的算法报「只接受二维灰度图」，不如在这里说清
+            if ~ismatrix(loadedImage)
+                error("matlab_test:unsupportedImage", ...
+                    "读到的图是 %d 维，只支持单帧灰度图或三通道彩色图。" + ...
+                    "请换一张图。", ndims(loadedImage));
+            end
+
+            showImage(axOriginal, loadedImage, AXES_LABEL_ORIGINAL);
         catch err
             uialert(fig, "读取失败：" + err.message, "打开图像失败");
             return;
         end
 
-        % +img/ 里的算法开头都有 ~ismatrix(I) 检查，彩色图会直接报错。
-        % 这里统一转灰度，并在状态栏说明，免得用户以为显示的就是原色。
-        isColorInput = (ndims(raw) == 3);
-        if isColorInput
-            currentImage = rgb2gray(raw);
-        else
-            currentImage = raw;
-        end
-        currentName = string(fileName);
+        % 走到这里说明读图和显示都成功了，这时才改状态 ——
+        % 上面任何一步失败都不会留下半更新的界面
+        currentImage = loadedImage;
+        currentName  = string(fileName);
+        isColorInput = isColor;
 
         resultImage    = [];                 % 换了图，上一次的结果作废
+        resultOutput   = "";
         infoLabel.Text = "尚未执行";
 
-        showImage(axOriginal, currentImage, AXES_LABEL_ORIGINAL);
         cla(axResult);
         title(axResult, AXES_LABEL_RESULT);
 
@@ -788,7 +811,8 @@ refreshEnableState();
         end
         elapsed = toc(tStart);
 
-        resultImage = result;
+        resultImage  = result;
+        resultOutput = entryNow.Output;
 
         extraText = "";
         if ~isempty(extraValue)
@@ -815,15 +839,26 @@ refreshEnableState();
 
         for kk = 1:numel(algorithmButtons)
             isImplemented = ~isempty(which(registry(kk).Fcn));
+
+            % Enable 和 FontColor 表示两件不同的事，不能绑在同一个条件上：
+            %   Enable     —— 现在能不能点（要有图，且算法实现了）
+            %   FontColor  —— 这个算法实现了没有（灰 = 未实现）
+            % 混在一起的话，没载图时 16 个按钮全是灰的，用户看不出哪几个能用，
+            % 而那正是刚打开界面、还没载图时的状态。
             algorithmButtons(kk).Enable = onOff(hasImage && isImplemented);
-            if hasImage && isImplemented
+            if isImplemented
                 algorithmButtons(kk).FontColor = NORMAL_COLOR;
             else
                 algorithmButtons(kk).FontColor = DISABLED_COLOR;
             end
         end
 
-        saveButton.Enable    = onOff(hasImage && ~isempty(resultImage));
+        % 特征向量不是图像，imwrite 会把它当 1×N 的图写出垃圾，所以不给保存。
+        % 判据用「产出这个结果的算法」的 Output，不是当前选中的那个 ——
+        % 用户可以在算完之后改选别的算法。
+        isSavable = ~isempty(resultImage) && resultOutput ~= "vector";
+
+        saveButton.Enable    = onOff(hasImage && isSavable);
         executeButton.Enable = onOff(hasImage && selectedIdx > 0);
     end
 
@@ -1127,6 +1162,19 @@ failureCount = failureCount + checkEq("未载图时「打开图像」可点", is
 failureCount = failureCount + checkEq("未载图时「执行」灰",       isEnabled("执行"),     false);
 failureCount = failureCount + checkEq("未载图时「保存结果」灰",   isEnabled("保存结果"), false);
 
+% ---------- 字色只反映「实现了没有」，与有没有载图无关 ----------
+% 刚打开界面时一张图都没有，已实现的那几个算法仍应是黑字，否则用户看不出
+% 哪几个能用。最初把 FontColor 和 Enable 绑在同一个条件上，就是这个毛病，
+% 而只断言 Enable 的检查抓不到它 —— 所以这条要单独测。
+isImplemented = false(numel(registry), 1);
+for kk = 1:numel(registry)
+    isImplemented(kk) = ~isempty(which(registry(kk).Fcn));
+end
+
+nBlackText = nnz(arrayfun(@(btn) isequal(btn.FontColor, [0 0 0]), algorithmButtons));
+failureCount = failureCount + checkEq("未载图时黑字按钮数（应等于已实现数）", ...
+    nBlackText, nnz(isImplemented));
+
 close(fig);
 
 % ---------- 汇总 ----------
@@ -1187,6 +1235,7 @@ Expected:
 未载图时「打开图像」可点      期望 true       实测 true       true
 未载图时「执行」灰            期望 false      实测 false      true
 未载图时「保存结果」灰        期望 false      实测 false      true
+未载图时黑字按钮数（应等于已实现数） 期望 4    实测 4          true
 
 全部通过
 ```
