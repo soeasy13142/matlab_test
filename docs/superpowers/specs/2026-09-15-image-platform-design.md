@@ -146,8 +146,9 @@ feat = img.featLBP(I, numNeighbors)
 ```matlab
 PSNR_MIN_GEOMETRY  = 30;    % 几何变换，插值实现细节不同，放宽
 SSIM_MIN_GEOMETRY  = 0.95;
-PSNR_MIN_POINTWISE = 45;    % 灰度变换，属逐像素映射，应很接近（实测伽马变换与
-                            % imadjust 逐位相等，PSNR 为 Inf；线性拉伸相差 ≤2 灰阶）
+PSNR_MIN_POINTWISE = 60;    % 灰度变换与全局直方图均衡，逐像素 LUT 映射，理论上应与
+                            % 工具箱逐位一致。实测正确实现 PSNR = Inf / 72.03 dB；
+                            % 把 round 换成 floor 的 bug 是 51.21 dB，取 60 能拦下
 SSIM_MIN_POINTWISE = 0.999;
 ...
 JACCARD_MIN_EDGE   = 0.85;  % 边缘检测，边界处理与细化策略不同
@@ -158,6 +159,12 @@ CORR_MIN_FEATURE   = 0.99;  % 特征描述子
 实现错了还是阈值定得不合理，把结论写进注释。不允许为了让断言通过而调阈值，除非能说清
 差异的来源（例如 `medfilt2` 在边界上的填充策略与手写实现不同）。这条要落到
 `notes.md` 里。
+
+**这套阈值的已知盲区（2026-09-15 实测）**：PSNR 与 SSIM 两条都拦不住「只影响少量像素」
+的细微实现错误。以 5% 的像素差 1 个灰阶为例，PSNR 约 61 dB、SSIM 约 0.9997，两条都会放
+过。它们能拦住的是影响面较大的错误（实测：`floor` 替 `round` 影响 49% 的像素，PSNR
+51.21 dB、SSIM 0.9974，两条都拦下）。若要堵住这个盲区，需要对「正确实现应当逐位相等」
+的类别再加一条 `max|差|` 硬断言，本轮未加。
 
 ## 目录结构（本轮）
 

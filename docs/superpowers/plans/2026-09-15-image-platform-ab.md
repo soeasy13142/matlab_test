@@ -421,7 +421,15 @@ git commit -m "feat: 图像处理平台骨架与验证框架，含 Otsu 与迭�
 这两个阈值常量声明在下面 `verifyIntensity` 函数的开头（脚本的局部函数读不到脚本体变量）：
 
 ```matlab
-PSNR_MIN_POINTWISE = 45;    % 逐像素映射类，手写与工具箱应几乎完全一致
+% 逐像素映射类（灰度变换、直方图均衡全局）的正确实现在理论上应与工具箱逐位一致，
+% 阈值要比其他类别紧得多。实测依据（cameraman/rice）：
+%   正确实现 vs imadjust   PSNR = Inf / 72.03 dB，SSIM = 1.000000 / 0.999996
+%   把 round 换成 floor 的 bug  PSNR = 51.21 dB，SSIM = 0.997379
+% 取 60 dB：正确实现有 12 dB 余量，floor bug 被拦下。SSIM 那条同时也会拦住它
+% （0.9974 < 0.999），两者相关性不完全，一起留着。
+% 注意两条阈值都拦不住「只影响少量像素」的细微 bug——5% 像素差 1 灰阶时
+% PSNR 约 61 dB、SSIM 约 0.9997，两条都会过。
+PSNR_MIN_POINTWISE = 60;
 SSIM_MIN_POINTWISE = 0.999;
 ```
 
@@ -601,7 +609,11 @@ git commit -m "feat: 灰度变换类算法（线性拉伸、伽马变换）并�
 - [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
-PSNR_MIN_HISTEQ  = 40;      % 直方图均衡，取整口径可能略有不同
+% 全局直方图均衡也是逐像素 LUT 映射，阈值与灰度变换同档（见 verifyIntensity 的实测依据）。
+% 目标 60 dB。若实测低于 60，先查是实现差异还是取整口径差异，把结论写进 histEqualize.m
+% 的注释，不要直接放宽阈值。
+% CLAHE 不在此列：它含分块与块间插值，与 adapthisteq 只能是近似，阈值单独放宽。
+PSNR_MIN_HISTEQ  = 60;
 SSIM_MIN_HISTEQ  = 0.99;
 PSNR_MIN_CLAHE   = 18;      % CLAHE 三个参数耦合，与工具箱只能是近似
 SSIM_MIN_CLAHE   = 0.70;
