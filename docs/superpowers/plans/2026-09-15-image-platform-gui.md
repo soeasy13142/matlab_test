@@ -511,7 +511,7 @@ choice 默认值不在选项里条数   期望 0          实测 0          true
 
 | 注入 | 插在 `registry = imgRegistry();` 之后的那一句 | 应当变非零的计数器 |
 |---|---|---|
-| 类别数 | `registry(1).Category = "新类别";` | 类别数 |
+| 类别数 | `registry(1).Category = "新类别";` | 类别数、每类算法数（最小值）|
 | 算法总数 | `registry(16) = [];` | 算法总数、每类算法数（最小值） |
 | 每类算法数 | `registry(2) = [];` | 算法总数、每类算法数（最小值） |
 | Fcn 前缀 | `registry(1).Fcn = "grayGamma";` | Fcn 前缀不合规条数（**不含** Fcn 重名条数） |
