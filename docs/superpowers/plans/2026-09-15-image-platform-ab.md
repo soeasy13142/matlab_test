@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `hw04-imageGeometry/platform/` 下实现 8 类共 16 个手写图像处理算法，并写一个自动验证脚本，逐个与 MATLAB 图像处理工具箱对照，指标不达标即断言失败。
+**Goal:** 在 `hw04-imageGeometry/platform/` 下实现 8 类共 16 个手写图像处理算法，并写一个自动验证脚本，逐个与 MATLAB 图像处理工具箱对照，不达标的项全部跑完后统一汇总并以非零退出码结束。
 
-**Architecture:** 算法放包目录 `+img/`，调用写成 `img.geomRotate(...)`，不写 `addpath`（实测包目录在 cwd 或 path 含其父目录时可解析）。`verifyAlgorithms.m` 是唯一的验证入口，顶部集中定义阈值常量，用局部函数 `reportRow` 统一打印与断言。
+**Architecture:** 算法放包目录 `+img/`，调用写成 `img.geomRotate(...)`，不写 `addpath`（实测包目录在 cwd 或 path 含其父目录时可解析）。`verifyAlgorithms.m` 是唯一的验证入口，顶部集中定义阈值常量，用局部函数 `reportRow` 统一打印与判定：它不抛错，失败只打印明细并返回 `isPass`，由各验证函数累加条数，脚本跑完全部算法后在末尾统一报错。
 
 **Tech Stack:** MATLAB R2025b，Image Processing Toolbox 25.2、Computer Vision Toolbox 25.2（均本机已装）。
 
@@ -33,7 +33,7 @@
 | 文件 | 职责 |
 |---|---|
 | `hw04-imageGeometry/platform/README.md` | 平台说明、运行方式、依赖的工具箱与版本 |
-| `hw04-imageGeometry/platform/verifyAlgorithms.m` | 唯一验证入口：载入测试图、逐类调用算法、打印对照表、断言 |
+| `hw04-imageGeometry/platform/verifyAlgorithms.m` | 唯一验证入口：载入测试图、逐类调用算法、打印对照表、判定并汇总未通过项 |
 | `hw04-imageGeometry/platform/+img/threshOtsu.m` | Otsu 全局阈值分割 |
 | `hw04-imageGeometry/platform/+img/threshIterative.m` | 迭代法阈值分割 |
 | `hw04-imageGeometry/platform/+img/grayLinearStretch.m` | 线性灰度拉伸 |
@@ -59,7 +59,7 @@
 
 ## Task 1: 平台骨架 + 验证框架 + 阈值分割类
 
-建立整个模式：函数怎么写、验证怎么写、断言怎么报错。后续 7 个任务都照这个模子复制。
+建立整个模式：函数怎么写、验证怎么写、失败怎么汇总报错。后续 7 个任务都照这个模子复制。
 
 **Files:**
 - Create: `hw04-imageGeometry/platform/README.md`
@@ -72,7 +72,9 @@
 - Produces:
   - `[BW, level] = img.threshOtsu(I)` — `I` 灰度图矩阵，`BW` logical 二值图，`level` 归一化阈值 `[0,1]`
   - `[BW, level] = img.threshIterative(I, tol)` — `tol` 迭代收敛容差，默认 `1e-6`
-  - 局部函数 `reportRow(category, algorithm, metricName, value, threshold, unit)` — 打印一行并断言，后续所有任务复用
+  - 局部函数 `isPass = reportRow(category, algorithm, metricName, value, threshold, unit, direction)` — 打印一行并判定是否达标，**不抛错**。`direction` 取 `"max"`（越大越好，默认）或 `"min"`（越小越好）
+  - 局部函数 `nFail = verifyThresholding(images)` — 返回本函数记录的失败条数，供脚本累加
+  - 脚本体在末尾按 `failureCount` 统一 `error`，退出码非零
 
 - [ ] **Step 1: 建目录与 README**
 
@@ -244,8 +246,9 @@ end
 %   matlab -batch "run('hw04-imageGeometry/platform/verifyAlgorithms.m')"
 % 退出码 0 表示全部通过。
 %
-% 预期结果：命令窗口打印一张对照表，每行一个算法，列出实测指标与阈值；
-%          全部达标时最后打印「全部通过」。
+% 预期结果：命令窗口打印一张对照表，每行一个算法，列出实测指标与阈值。
+%          不达标的行紧随一段缩进的失败说明，但脚本继续往下跑完，
+%          最后汇总未通过项数并以非零退出码结束。全部达标时打印「全部通过」。
 %
 % 阈值的定法见 docs/superpowers/specs/2026-09-15-image-platform-design.md。
 
@@ -261,42 +264,58 @@ IMAGES = { ...
     "cameraman", imread("cameraman.tif"); ...
     "rice",      imread("rice.png")};
 
-fprintf("%-10s %-18s %-10s %12s %12s  %s\n", ...
-    "类别", "算法", "指标", "实测", "阈值", "通过");
+fprintf("%-10s %-18s %-10s %12s %12s  %-5s %s\n", ...
+    "类别", "算法", "指标", "实测", "阈值", "通过", "单位");
 fprintf("%s\n", repmat('-', 1, 78));
 
+% 每个验证函数返回它记录的失败条数，在这里累加
+failureCount = 0;
+
 fprintf("\n【阈值分割】\n");
-verifyThresholding(IMAGES);
+failureCount = failureCount + verifyThresholding(IMAGES);
+
+% 后续类别在这里各加一行，形如
+%   failureCount = failureCount + verifyIntensity(IMAGES);
+
+if failureCount > 0
+    error("matlab_test:verifyFailed", ...
+        "共 %d 项验证未通过，逐条明细见上方标了 false 的行。", failureCount);
+end
 
 fprintf("\n全部通过\n");
 
 % ==================== 局部函数 ====================
 
-function verifyThresholding(images)
-%VERIFYTHRESHOLDING 验证两种阈值分割算法
+function nFail = verifyThresholding(images)
+%VERIFYTHRESHOLDING 验证两种阈值分割算法，返回未通过的条数
+
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
     I = images{kk, 2};
 
     % --- Otsu：与 otsuthresh 求出的阈值应逐位相等 ---
-    % reportRow 判的是「实测 >= 阈值」，而阈值差是越小越好，所以两者都取负号
+    % 「阈值差」越小越好，所以方向传 "min"
     levelRef = otsuthresh(imhist(I, 256));
     [BW, level] = img.threshOtsu(I);
-    reportRow("阈值分割", "Otsu/" + imgName, "阈值差", ...
-        -abs(level - levelRef), -OTSUTHRESH_TOL, "");
-    reportRow("阈值分割", "Otsu/" + imgName, "Jaccard", ...
-        jaccard(BW, imbinarize(I, levelRef)), JACCARD_MIN_BIN, "");
+    nFail = nFail + ~reportRow("阈值分割", "Otsu/" + imgName, "阈值差", ...
+        abs(level - levelRef), OTSUTHRESH_TOL, "", "min");
+    nFail = nFail + ~reportRow("阈值分割", "Otsu/" + imgName, "Jaccard", ...
+        jaccard(BW, imbinarize(I, levelRef)), JACCARD_MIN_BIN, "", "max");
 
     % --- 迭代法：无对应工具箱函数，与 Otsu 的结果比重叠度 ---
     BWIter = img.threshIterative(I);
-    reportRow("阈值分割", "迭代法/" + imgName, "Jaccard", ...
-        jaccard(BWIter, BW), JACCARD_MIN_BIN, "");
+    nFail = nFail + ~reportRow("阈值分割", "迭代法/" + imgName, "Jaccard", ...
+        jaccard(BWIter, BW), JACCARD_MIN_BIN, "", "max");
 end
 end
 
-function reportRow(category, algorithm, metricName, value, threshold, unit)
-%REPORTROW 打印一行对照结果，未达阈值即报错
+function isPass = reportRow(category, algorithm, metricName, value, threshold, unit, direction)
+%REPORTROW 打印一行对照结果并判定是否达标，失败时追加一行缩进说明
+%
+%   不抛错。失败只记录并打印，由调用者累加条数，让整个脚本跑完所有算法后
+%   再统一报错——否则第一个算法挂了，后面算法的实测值就看不到了。
 %
 %   输入
 %       category    类别名，如 "阈值分割"
@@ -305,18 +324,36 @@ function reportRow(category, algorithm, metricName, value, threshold, unit)
 %       value       实测值
 %       threshold   阈值
 %       unit        单位后缀，如 "dB"，无单位传 ""
+%       direction   可选，"max" 表示越大越好（默认），"min" 表示越小越好
 %   输出
-%       无。达标时打印一行，不达标时 error
+%       isPass      logical，是否达标
 
-isPass = value >= threshold;
+DEFAULT_DIRECTION = "max";
+
+narginchk(6, 7);
+if nargin < 7 || strlength(direction) == 0
+    direction = DEFAULT_DIRECTION;
+end
+
+switch direction
+    case "max"
+        isPass = value >= threshold;
+        relation = "不低于";
+    case "min"
+        isPass = value <= threshold;
+        relation = "不超过";
+    otherwise
+        error("matlab_test:badDirection", ...
+            "direction 只支持 max 或 min，当前为 %s。", direction);
+end
+
 fprintf("%-10s %-18s %-10s %12.4f %12.4f  %-5s %s\n", ...
     category, algorithm, metricName, value, threshold, ...
     string(isPass), unit);
 
 if ~isPass
-    error("matlab_test:verifyFailed", ...
-        "%s 的 %s 为 %.4f%s，低于阈值 %.4f%s。请检查实现是否与工具箱口径一致。", ...
-        algorithm, metricName, value, unit, threshold, unit);
+    fprintf("    ^ 未通过: %s 应%s %.4f%s，实测 %.4f%s\n", ...
+        metricName, relation, threshold, unit, value, unit);
 end
 end
 ```
@@ -331,6 +368,15 @@ cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charli
 Expected: 打印「【阈值分割】」段共 6 行，每行末列为 `true`，最后一行是「全部通过」，退出码 0。
 
 如果 Otsu 的阈值差不为 0，先查 `imhist` 的 bin 数是否一致（本实现固定 256 档），再查阈值换算公式；不要直接放宽 `OTSUTHRESH_TOL`。
+
+**后续任务往这个脚本里加新类别时，照这个模式加三处**：
+
+1. 阈值常量加在「判定阈值」区；
+2. 在 `if failureCount > 0` 之前加一行 `failureCount = failureCount + verifyXxx(IMAGES);`（前面配一个 `fprintf` 打类别名）；
+3. 在局部函数区末尾加 `function nFail = verifyXxx(images)`，内部每条断言写成
+   `nFail = nFail + ~reportRow(...);`。
+
+`~isPass` 把 logical 转成 0/1 直接累加，避免再写一个 if 分支。
 
 - [ ] **Step 6: 提交**
 
@@ -363,11 +409,11 @@ PSNR_MIN_POINTWISE = 45;    % 逐像素映射类，手写与工具箱应几乎�
 SSIM_MIN_POINTWISE = 0.999;
 ```
 
-在 `fprintf("\n全部通过\n");` 之前追加：
+在 `if failureCount > 0` 之前追加：
 
 ```matlab
 fprintf("\n【灰度变换】\n");
-verifyIntensity(IMAGES);
+failureCount = failureCount + verifyIntensity(IMAGES);
 ```
 
 - [ ] **Step 2: 写 grayLinearStretch.m**
@@ -461,8 +507,10 @@ end
 在 `verifyAlgorithms.m` 的局部函数区追加：
 
 ```matlab
-function verifyIntensity(images)
-%VERIFYINTENSITY 验证两种灰度变换算法
+function nFail = verifyIntensity(images)
+%VERIFYINTENSITY 验证两种灰度变换算法，返回未通过的条数
+
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
@@ -472,19 +520,19 @@ for kk = 1:size(images, 1)
     limits = stretchlim(I, [0.01, 0.99]) * double(intmax(class(I)));
     outOurs = img.grayLinearStretch(I, limits(1), limits(2));
     outRef  = imadjust(I, stretchlim(I, [0.01, 0.99]), []);
-    reportRow("灰度变换", "线性拉伸/" + imgName, "PSNR", ...
-        psnr(outOurs, outRef), PSNR_MIN_POINTWISE, "dB");
-    reportRow("灰度变换", "线性拉伸/" + imgName, "SSIM", ...
-        ssim(outOurs, outRef), SSIM_MIN_POINTWISE, "");
+    nFail = nFail + ~reportRow("灰度变换", "线性拉伸/" + imgName, "PSNR", ...
+        psnr(outOurs, outRef), PSNR_MIN_POINTWISE, "dB", "max");
+    nFail = nFail + ~reportRow("灰度变换", "线性拉伸/" + imgName, "SSIM", ...
+        ssim(outOurs, outRef), SSIM_MIN_POINTWISE, "", "max");
 
     % --- 伽马变换：与 imadjust 的 gamma 参数对照 ---
     GAMMA_TEST = 0.5;
     outOursG = img.grayGamma(I, GAMMA_TEST);
     refG = imadjust(I, [], [], GAMMA_TEST);
-    reportRow("灰度变换", "伽马/" + imgName, "PSNR", ...
-        psnr(outOursG, refG), PSNR_MIN_POINTWISE, "dB");
-    reportRow("灰度变换", "伽马/" + imgName, "SSIM", ...
-        ssim(outOursG, refG), SSIM_MIN_POINTWISE, "");
+    nFail = nFail + ~reportRow("灰度变换", "伽马/" + imgName, "PSNR", ...
+        psnr(outOursG, refG), PSNR_MIN_POINTWISE, "dB", "max");
+    nFail = nFail + ~reportRow("灰度变换", "伽马/" + imgName, "SSIM", ...
+        ssim(outOursG, refG), SSIM_MIN_POINTWISE, "", "max");
 end
 end
 ```
@@ -535,7 +583,7 @@ SSIM_MIN_CLAHE   = 0.70;
 
 ```matlab
 fprintf("\n【直方图均衡】\n");
-verifyHistogram(IMAGES);
+failureCount = failureCount + verifyHistogram(IMAGES);
 ```
 
 - [ ] **Step 2: 写 histEqualize.m**
@@ -704,8 +752,10 @@ end
 - [ ] **Step 4: 追加 verifyHistogram 局部函数**
 
 ```matlab
-function verifyHistogram(images)
-%VERIFYHISTOGRAM 验证两种直方图均衡算法
+function nFail = verifyHistogram(images)
+%VERIFYHISTOGRAM 验证两种直方图均衡算法，返回未通过的条数
+
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
@@ -714,18 +764,18 @@ for kk = 1:size(images, 1)
     % --- 全局均衡：与 histeq 对照 ---
     outOurs = img.histEqualize(I, 256);
     outRef  = histeq(I, 256);
-    reportRow("直方图均衡", "全局/" + imgName, "PSNR", ...
-        psnr(outOurs, outRef), PSNR_MIN_HISTEQ, "dB");
-    reportRow("直方图均衡", "全局/" + imgName, "SSIM", ...
-        ssim(outOurs, outRef), SSIM_MIN_HISTEQ, "");
+    nFail = nFail + ~reportRow("直方图均衡", "全局/" + imgName, "PSNR", ...
+        psnr(outOurs, outRef), PSNR_MIN_HISTEQ, "dB", "max");
+    nFail = nFail + ~reportRow("直方图均衡", "全局/" + imgName, "SSIM", ...
+        ssim(outOurs, outRef), SSIM_MIN_HISTEQ, "", "max");
 
     % --- CLAHE：与 adapthisteq 对照，参数取两者的共同默认值 ---
     outClahe = img.histClahe(I, [8, 8], 0.01);
     refClahe = adapthisteq(I, "NumTiles", [8, 8], "ClipLimit", 0.01);
-    reportRow("直方图均衡", "CLAHE/" + imgName, "PSNR", ...
-        psnr(outClahe, refClahe), PSNR_MIN_CLAHE, "dB");
-    reportRow("直方图均衡", "CLAHE/" + imgName, "SSIM", ...
-        ssim(outClahe, refClahe), SSIM_MIN_CLAHE, "");
+    nFail = nFail + ~reportRow("直方图均衡", "CLAHE/" + imgName, "PSNR", ...
+        psnr(outClahe, refClahe), PSNR_MIN_CLAHE, "dB", "max");
+    nFail = nFail + ~reportRow("直方图均衡", "CLAHE/" + imgName, "SSIM", ...
+        ssim(outClahe, refClahe), SSIM_MIN_CLAHE, "", "max");
 end
 end
 ```
@@ -776,7 +826,7 @@ SSIM_MIN_MEDIAN  = 0.99;
 
 ```matlab
 fprintf("\n【空域滤波】\n");
-verifySpatial(IMAGES);
+failureCount = failureCount + verifySpatial(IMAGES);
 ```
 
 - [ ] **Step 2: 写 filterMean.m**
@@ -870,10 +920,11 @@ end
 - [ ] **Step 4: 追加 verifySpatial 局部函数**
 
 ```matlab
-function verifySpatial(images)
-%VERIFYSPATIAL 验证两种空域滤波算法
+function nFail = verifySpatial(images)
+%VERIFYSPATIAL 验证两种空域滤波算法，返回未通过的条数
 
 KERNEL_SIZE = 3;
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
@@ -882,18 +933,18 @@ for kk = 1:size(images, 1)
     % --- 均值滤波：与 imfilter + fspecial 对照 ---
     outMean = img.filterMean(I, KERNEL_SIZE);
     refMean = imfilter(I, fspecial("average", [KERNEL_SIZE, KERNEL_SIZE]));
-    reportRow("空域滤波", "均值/" + imgName, "PSNR", ...
-        psnr(outMean, refMean), PSNR_MIN_SPATIAL, "dB");
-    reportRow("空域滤波", "均值/" + imgName, "SSIM", ...
-        ssim(outMean, refMean), SSIM_MIN_SPATIAL, "");
+    nFail = nFail + ~reportRow("空域滤波", "均值/" + imgName, "PSNR", ...
+        psnr(outMean, refMean), PSNR_MIN_SPATIAL, "dB", "max");
+    nFail = nFail + ~reportRow("空域滤波", "均值/" + imgName, "SSIM", ...
+        ssim(outMean, refMean), SSIM_MIN_SPATIAL, "", "max");
 
     % --- 中值滤波：与 medfilt2 对照 ---
     outMed = img.filterMedian(I, KERNEL_SIZE);
     refMed = medfilt2(I, [KERNEL_SIZE, KERNEL_SIZE]);
-    reportRow("空域滤波", "中值/" + imgName, "PSNR", ...
-        psnr(outMed, refMed), PSNR_MIN_MEDIAN, "dB");
-    reportRow("空域滤波", "中值/" + imgName, "SSIM", ...
-        ssim(outMed, refMed), SSIM_MIN_MEDIAN, "");
+    nFail = nFail + ~reportRow("空域滤波", "中值/" + imgName, "PSNR", ...
+        psnr(outMed, refMed), PSNR_MIN_MEDIAN, "dB", "max");
+    nFail = nFail + ~reportRow("空域滤波", "中值/" + imgName, "SSIM", ...
+        ssim(outMed, refMed), SSIM_MIN_MEDIAN, "", "max");
 end
 end
 ```
@@ -943,7 +994,7 @@ ROT90_TOL          = 1e-9;  % 90 度整数倍旋转与 rot90 应逐位相等
 
 ```matlab
 fprintf("\n【几何变换】\n");
-verifyGeometry(IMAGES);
+failureCount = failureCount + verifyGeometry(IMAGES);
 ```
 
 - [ ] **Step 2: 写 geomRotate.m**
@@ -1080,25 +1131,26 @@ end
 - [ ] **Step 4: 追加 verifyGeometry 局部函数**
 
 ```matlab
-function verifyGeometry(images)
-%VERIFYGEOMETRY 验证两种几何变换算法
+function nFail = verifyGeometry(images)
+%VERIFYGEOMETRY 验证两种几何变换算法，返回未通过的条数
 
-ROT_ANGLE   = 50;
-ROT_ANGLE_CW = -20;
-SCALE_ORDER = [120, 200];
+ROT_ANGLE    = 50;
+SCALE_ORDER  = [120, 200];
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
     I = images{kk, 2};
 
     % --- 先验证旋转方向：90 度整数倍必须与 rot90 逐位相等 ---
-    % 这是最强的一条基准，rot90 是基础 MATLAB 函数，不依赖图像处理工具箱
+    % 这是最强的一条基准，rot90 是基础 MATLAB 函数，不依赖图像处理工具箱。
+    % 「差」越小越好，方向传 "min"
     diff90 = max(abs(double(img.geomRotate(I,  90, "nearest")) - double(rot90(I, 1))), [], "all");
-    reportRow("几何变换", "旋转方向/" + imgName, "90度差", ...
-        -diff90, -ROT90_TOL, "");
+    nFail = nFail + ~reportRow("几何变换", "旋转方向/" + imgName, "90度差", ...
+        diff90, ROT90_TOL, "", "min");
     diff180 = max(abs(double(img.geomRotate(I, 180, "nearest")) - double(rot90(I, 2))), [], "all");
-    reportRow("几何变换", "旋转方向/" + imgName, "180度差", ...
-        -diff180, -ROT90_TOL, "");
+    nFail = nFail + ~reportRow("几何变换", "旋转方向/" + imgName, "180度差", ...
+        diff180, ROT90_TOL, "", "min");
 
     % --- 旋转：与 imrotate 对照 ---
     outRot = img.geomRotate(I, ROT_ANGLE, "bicubic");
@@ -1108,24 +1160,20 @@ for kk = 1:size(images, 1)
             "geomRotate 输出 %s，imrotate 输出 %s，尺寸不一致。", ...
             mat2str(size(outRot)), mat2str(size(refRot)));
     end
-    reportRow("几何变换", "旋转" + ROT_ANGLE + "度/" + imgName, "PSNR", ...
-        psnr(outRot, refRot), PSNR_MIN_GEOMETRY, "dB");
-    reportRow("几何变换", "旋转" + ROT_ANGLE + "度/" + imgName, "SSIM", ...
-        ssim(outRot, refRot), SSIM_MIN_GEOMETRY, "");
+    nFail = nFail + ~reportRow("几何变换", "旋转" + ROT_ANGLE + "度/" + imgName, "PSNR", ...
+        psnr(outRot, refRot), PSNR_MIN_GEOMETRY, "dB", "max");
+    nFail = nFail + ~reportRow("几何变换", "旋转" + ROT_ANGLE + "度/" + imgName, "SSIM", ...
+        ssim(outRot, refRot), SSIM_MIN_GEOMETRY, "", "max");
 
     % --- 缩放：与 imresize 对照 ---
     outScale = img.geomScale(I, SCALE_ORDER, "bilinear");
     refScale = imresize(I, SCALE_ORDER, "bilinear");
-    reportRow("几何变换", "缩放/" + imgName, "PSNR", ...
-        psnr(outScale, refScale), PSNR_MIN_GEOMETRY, "dB");
-    reportRow("几何变换", "缩放/" + imgName, "SSIM", ...
-        ssim(outScale, refScale), SSIM_MIN_GEOMETRY, "");
+    nFail = nFail + ~reportRow("几何变换", "缩放/" + imgName, "PSNR", ...
+        psnr(outScale, refScale), PSNR_MIN_GEOMETRY, "dB", "max");
+    nFail = nFail + ~reportRow("几何变换", "缩放/" + imgName, "SSIM", ...
+        ssim(outScale, refScale), SSIM_MIN_GEOMETRY, "", "max");
 end
 end
-```
-
-`reportRow` 用「实测值 >= 阈值」判定，所以「差越小越好」的指标传负数（`-diff` 与 `-tol`），
-这样判定方向就统一了。这一步的 `90度差` 两行就是这么处理的。
 
 - [ ] **Step 5: 跑验证**
 
@@ -1171,7 +1219,7 @@ RINGING_MAX_BUTTER = 0.02;  % 巴特沃斯低通的过冲应小于理想低通
 
 ```matlab
 fprintf("\n【频域滤波】\n");
-verifyFrequency(IMAGES);
+failureCount = failureCount + verifyFrequency(IMAGES);
 ```
 
 - [ ] **Step 2: 写 freqIdealLP.m**
@@ -1275,8 +1323,8 @@ end
 - [ ] **Step 4: 追加 verifyFrequency 局部函数**
 
 ```matlab
-function verifyFrequency(images)
-%VERIFYFREQUENCY 验证两种频域滤波算法
+function nFail = verifyFrequency(images)
+%VERIFYFREQUENCY 验证两种频域滤波算法，返回未通过的条数
 %
 %   频域滤波没有一一对应的工具箱函数，用三条性质代替直接对照：
 %     1. 全通掩膜下必须无损重建（验证 fft2 / ifft2 / fftshift 配对正确）；
@@ -1286,17 +1334,18 @@ function verifyFrequency(images)
 CUTOFF = 0.1;
 ORDER  = 2;
 CUTOFF_SWEEP = [0.05, 0.1, 0.2, 0.4];
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
     I = images{kk, 2};
     data = double(I);
 
-    % --- 性质 1：全通掩膜下无损重建 ---
+    % --- 性质 1：全通掩膜下无损重建。「误差」越小越好 ---
     recon = real(ifft2(ifftshift(fftshift(fft2(data)) .* 1)));
     reconErr = max(abs(recon - data), [], "all");
-    reportRow("频域滤波", "重构/" + imgName, "误差", ...
-        -reconErr, -RECON_TOL, "");
+    nFail = nFail + ~reportRow("频域滤波", "重构/" + imgName, "误差", ...
+        reconErr, RECON_TOL, "", "min");
 
     % --- 性质 2：截止频率越大，保留的能量越多 ---
     energies = zeros(size(CUTOFF_SWEEP));
@@ -1305,8 +1354,8 @@ for kk = 1:size(images, 1)
         energies(cc) = sum(filtered(:).^2);
     end
     isMonotone = all(diff(energies) > 0);
-    reportRow("频域滤波", "单调性/" + imgName, "通过", ...
-        double(isMonotone), 1, "");
+    nFail = nFail + ~reportRow("频域滤波", "单调性/" + imgName, "通过", ...
+        double(isMonotone), 1, "", "max");
 
     % --- 性质 3：巴特沃斯的过冲小于理想低通 ---
     % 过冲用一个亮边缘邻域的振铃幅度衡量：取中心行，算相邻像素的最大跳变，
@@ -1317,8 +1366,8 @@ for kk = 1:size(images, 1)
     baseJump = max(abs(diff(data(rowIdx, :))));
     idealRing  = max(abs(diff(idealOut(rowIdx, :))))  - baseJump;
     butterRing = max(abs(diff(butterOut(rowIdx, :)))) - baseJump;
-    reportRow("频域滤波", "振铃抑制/" + imgName, "差值", ...
-        idealRing - butterRing, RINGING_MAX_BUTTER, "");
+    nFail = nFail + ~reportRow("频域滤波", "振铃抑制/" + imgName, "差值", ...
+        idealRing - butterRing, RINGING_MAX_BUTTER, "", "max");
 end
 end
 ```
@@ -1357,16 +1406,17 @@ git commit -m "feat: 频域滤波类算法（理想低通、巴特沃斯低通�
 - [ ] **Step 1: 追加阈值常量与调用行**
 
 ```matlab
-JACCARD_MIN_EDGE = 0.85;   % edge 会做细化，手写版不做，重叠度到不了 1
-DICE_MIN_EDGE    = 0.90;
-CORR_MIN_GRADIENT = 0.95;  % 梯度幅值图与 imgradient 的相关系数
+JACCARD_MIN_EDGE   = 0.85;  % edge 会做细化，手写版不做，重叠度到不了 1
+DICE_MIN_EDGE      = 0.90;
+CORR_MIN_GRADIENT  = 0.95;  % 梯度幅值图与 imgradient 的相关系数
+MIN_OPERATOR_DIFF  = 1e-6;  % Sobel 与 Prewitt 的幅值差下限，防止两个函数写成同一个
 ```
 
 调用行：
 
 ```matlab
 fprintf("\n【边缘检测】\n");
-verifyEdge(IMAGES);
+failureCount = failureCount + verifyEdge(IMAGES);
 ```
 
 - [ ] **Step 2: 写 edgeSobel.m**
@@ -1482,10 +1532,11 @@ end
 - [ ] **Step 4: 追加 verifyEdge 局部函数**
 
 ```matlab
-function verifyEdge(images)
-%VERIFYEDGE 验证两种边缘检测算法
+function nFail = verifyEdge(images)
+%VERIFYEDGE 验证两种边缘检测算法，返回未通过的条数
 
 EDGE_THRESHOLD = 0.1;
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
@@ -1494,31 +1545,32 @@ for kk = 1:size(images, 1)
     % --- Sobel：梯度幅值与 imgradient 对照 ---
     [BWSobel, magSobel] = img.edgeSobel(I, EDGE_THRESHOLD);
     refMag = imgradient(I, "sobel");
-    reportRow("边缘检测", "Sobel幅值/" + imgName, "相关系数", ...
-        corr(magSobel(:), double(refMag(:))), CORR_MIN_GRADIENT, "");
+    nFail = nFail + ~reportRow("边缘检测", "Sobel幅值/" + imgName, "相关系数", ...
+        corr(magSobel(:), double(refMag(:))), CORR_MIN_GRADIENT, "", "max");
 
     % 二值图与 edge 对照。edge 的 threshold 是相对最大梯度的比例，口径一致
     refBW = edge(I, "sobel", EDGE_THRESHOLD);
-    reportRow("边缘检测", "Sobel二值/" + imgName, "Jaccard", ...
-        jaccard(BWSobel, refBW), JACCARD_MIN_EDGE, "");
-    reportRow("边缘检测", "Sobel二值/" + imgName, "Dice", ...
-        dice(BWSobel, refBW), DICE_MIN_EDGE, "");
+    nFail = nFail + ~reportRow("边缘检测", "Sobel二值/" + imgName, "Jaccard", ...
+        jaccard(BWSobel, refBW), JACCARD_MIN_EDGE, "", "max");
+    nFail = nFail + ~reportRow("边缘检测", "Sobel二值/" + imgName, "Dice", ...
+        dice(BWSobel, refBW), DICE_MIN_EDGE, "", "max");
 
     % --- Prewitt ---
     [BWPrewitt, magPrewitt] = img.edgePrewitt(I, EDGE_THRESHOLD);
     refMagP = imgradient(I, "prewitt");
-    reportRow("边缘检测", "Prewitt幅值/" + imgName, "相关系数", ...
-        corr(magPrewitt(:), double(refMagP(:))), CORR_MIN_GRADIENT, "");
+    nFail = nFail + ~reportRow("边缘检测", "Prewitt幅值/" + imgName, "相关系数", ...
+        corr(magPrewitt(:), double(refMagP(:))), CORR_MIN_GRADIENT, "", "max");
 
     refBWP = edge(I, "prewitt", EDGE_THRESHOLD);
-    reportRow("边缘检测", "Prewitt二值/" + imgName, "Jaccard", ...
-        jaccard(BWPrewitt, refBWP), JACCARD_MIN_EDGE, "");
-    reportRow("边缘检测", "Prewitt二值/" + imgName, "Dice", ...
-        dice(BWPrewitt, refBWP), DICE_MIN_EDGE, "");
+    nFail = nFail + ~reportRow("边缘检测", "Prewitt二值/" + imgName, "Jaccard", ...
+        jaccard(BWPrewitt, refBWP), JACCARD_MIN_EDGE, "", "max");
+    nFail = nFail + ~reportRow("边缘检测", "Prewitt二值/" + imgName, "Dice", ...
+        dice(BWPrewitt, refBWP), DICE_MIN_EDGE, "", "max");
 
-    % --- 两种算子的梯度方向应有差异，交叉验证没写成一个 ---
+    % --- 两种算子的权重不同，梯度幅值应当有可见差异，防止两个函数写成同一个 ---
     magDiff = mean(abs(magSobel(:) - magPrewitt(:)));
-    reportRow("边缘检测", "算子区分度/" + imgName, "幅值差", magDiff, 1e-6, "");
+    nFail = nFail + ~reportRow("边缘检测", "算子区分度/" + imgName, "幅值差", ...
+        magDiff, MIN_OPERATOR_DIFF, "", "max");
 end
 end
 ```
@@ -1532,7 +1584,7 @@ cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charli
 
 Expected: 「【边缘检测】」段全部 `true`。
 
-若 Jaccard 低于 0.85，先确认 `edge` 的 threshold 口径：它对 Sobel 是相对最大梯度幅值的比例，与手写版一致；差异主要来自 `edge` 的细化步骤（把梯度脊线压成一个像素宽）。可以在 `verifyEdge` 里给 `edge(..., "nothinning")` 再比一次，作为诊断信息打印，但断言仍用细化版。
+若 Jaccard 低于 0.85，先确认 `edge` 的 threshold 口径：它对 Sobel 是相对最大梯度幅值的比例，与手写版一致；差异主要来自 `edge` 的细化步骤（把梯度脊线压成一个像素宽）。可以在 `verifyEdge` 里给 `edge(..., "nothinning")` 再比一次，作为诊断信息打印，但判定仍用细化版。
 
 - [ ] **Step 6: 提交**
 
@@ -1566,7 +1618,7 @@ CORR_MIN_FEATURE = 0.99;   % 特征描述子的相关系数
 
 ```matlab
 fprintf("\n【特征提取】\n");
-verifyFeature(IMAGES);
+failureCount = failureCount + verifyFeature(IMAGES);
 ```
 
 - [ ] **Step 2: 查 extractHOGFeatures 的归一化口径**
@@ -1762,12 +1814,13 @@ end
 - [ ] **Step 5: 追加 verifyFeature 局部函数**
 
 ```matlab
-function verifyFeature(images)
-%VERIFYFEATURE 验证两种特征提取算法
+function nFail = verifyFeature(images)
+%VERIFYFEATURE 验证两种特征提取算法，返回未通过的条数
 
-CELL_SIZE    = 8;
-NUM_BINS     = 9;
+CELL_SIZE     = 8;
+NUM_BINS      = 9;
 NUM_NEIGHBORS = 8;
+nFail = 0;
 
 for kk = 1:size(images, 1)
     imgName = images{kk, 1};
@@ -1783,15 +1836,15 @@ for kk = 1:size(images, 1)
             "featHOG 返回 %d 维，extractHOGFeatures 返回 %d 维。先对齐 cell/block 切分口径。", ...
             numel(featOurs), numel(featRef));
     end
-    reportRow("特征提取", "HOG/" + imgName, "相关系数", ...
-        corr(featOurs(:), double(featRef(:))), CORR_MIN_FEATURE, "");
+    nFail = nFail + ~reportRow("特征提取", "HOG/" + imgName, "相关系数", ...
+        corr(featOurs(:), double(featRef(:))), CORR_MIN_FEATURE, "", "max");
 
     % --- LBP：与 extractLBPFeatures 对照 ---
     featLbpOurs = img.featLBP(I, NUM_NEIGHBORS);
     featLbpRef  = extractLBPFeatures(I, "NumNeighbors", NUM_NEIGHBORS, ...
         "Upright", true);
-    reportRow("特征提取", "LBP/" + imgName, "相关系数", ...
-        corr(featLbpOurs(:), double(featLbpRef(:))), CORR_MIN_FEATURE, "");
+    nFail = nFail + ~reportRow("特征提取", "LBP/" + imgName, "相关系数", ...
+        corr(featLbpOurs(:), double(featLbpRef(:))), CORR_MIN_FEATURE, "", "max");
 end
 end
 ```
@@ -1913,7 +1966,7 @@ git commit -m "docs: 真实照片复验通过，补齐平台 README 与验证结
 对照 spec 的验收标准：
 
 1. 16 个算法实现全部可调用，`verifyAlgorithms.m` 退出码 0 → Task 1~9 每步的 Expected 覆盖
-2. 对照表里每个算法的实测指标都在阈值之上 → `reportRow` 的断言覆盖
+2. 对照表里每个算法的实测指标都在阈值之上 → `reportRow` 的判定与末尾 `failureCount` 汇总覆盖
 3. 在 `cameraman.tif`、`rice.png`、`photo.jpg` 三种输入上都成立 → Task 9 Step 1~2
 4. 每个函数有 H1 行 + 功能说明 + 输入输出 + 一个调用示例 → Global Constraints 覆盖
 5. 跑通即按 `git.md` 的粒度提交 → 每个 Task 的最后一步
