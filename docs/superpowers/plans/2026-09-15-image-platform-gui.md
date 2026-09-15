@@ -80,7 +80,9 @@
   - `registry = imgRegistry()` — 返回 16×1 的 struct 数组，字段
     `Category`（string）、`Name`（string）、`Fcn`（string，形如 `"img.grayGamma"`）、
     `Params`（cell 数组，元素是参数 struct，无参数时为 `{}`）、
-    `Output`（string，取值 `"image"` / `"binary"` / `"vector"`）。
+    `Output`（string，取值 `"image"` / `"binary"` / `"vector"`）、
+    `ExtraLabel`（string，第二个返回值的显示名，无则为 `""`；
+    只有两个阈值分割算法是 `"阈值"`，Task 2 的界面据此决定要不要取两个输出）。
     参数 struct 的字段：`Name`（string）、`Default`、`Kind`（string，
     取值 `"slider"` / `"edit"` / `"choice"` / `"size"`），
     可选字段 `Min` / `Max`（数值，`slider` 与 `size` 用）、
@@ -109,11 +111,12 @@ function registry = imgRegistry()
 %       无
 %   输出
 %       registry    16×1 的 struct 数组，字段：
-%                     Category  类别名
-%                     Name      算法显示名
-%                     Fcn       包函数名，形如 "img.grayGamma"
-%                     Params    参数定义 cell 数组，无参数时为 {}
-%                     Output    输出类型，"image" / "binary" / "vector"
+%                     Category    类别名
+%                     Name        算法显示名
+%                     Fcn         包函数名，形如 "img.grayGamma"
+%                     Params      参数定义 cell 数组，无参数时为 {}
+%                     Output      输出类型，"image" / "binary" / "vector"
+%                     ExtraLabel  第二个返回值的显示名，无则为 ""
 %
 %   调用示例
 %       registry = imgRegistry();
@@ -128,10 +131,10 @@ registry = [ ...
         pSlider("gamma", 0.5, 0.05, 3)}, ...
         "image"); ...
     entry("阈值分割", "Otsu", "img.threshOtsu", {}, ...
-        "binary"); ...
+        "binary", "阈值"); ...
     entry("阈值分割", "迭代法", "img.threshIterative", { ...
         pEdit("tol", 1e-6, 1e-9, 1e-2)}, ...
-        "binary"); ...
+        "binary", "阈值"); ...
     entry("几何变换", "旋转", "img.geomRotate", { ...
         pSlider("angle", 50, -180, 180), ...
         pChoice("method", "bicubic", ["nearest", "bilinear", "bicubic"])}, ...
@@ -178,18 +181,51 @@ end
 
 % ==================== 局部函数 ====================
 
-function e = entry(category, name, fcn, params, output)
+function e = entry(category, name, fcn, params, output, extraLabel)
 %ENTRY 组装一条算法登记项
 %
 %   Params 字段用 {params} 再包一层 cell，否则 struct 会把 params 的每个元素
 %   当成数组元素展开，16 条登记项就拼不成 struct 数组了。
+%
+%   extraLabel 可选，第二个返回值的显示名。只有 threshOtsu 与 threshIterative
+%   返回 [BW, level] 两个值，那个 level 是阈值分割这道题的核心数字，界面上要
+%   显示出来，所以需要在这里登记它叫什么。其余算法只返回一个值，省略即可。
+%
+%   输入
+%       category    类别名
+%       name        算法显示名
+%       fcn         包函数名
+%       params      参数定义 cell 数组
+%       output      输出类型
+%       extraLabel  可选，第二个返回值的显示名，默认 ""
+%   输出
+%       e           一条登记项 struct
+%
+%   调用示例
+%       e = entry("阈值分割", "Otsu", "img.threshOtsu", {}, "binary", "阈值");
+
+narginchk(5, 6);
+if nargin < 6
+    extraLabel = "";
+end
 
 e = struct("Category", category, "Name", name, "Fcn", fcn, ...
-    "Params", {params}, "Output", output);
+    "Params", {params}, "Output", output, "ExtraLabel", extraLabel);
 end
 
 function p = pSlider(name, defaultValue, minValue, maxValue)
 %PSLIDER 范围明确的数值参数，界面上给滑块 + 数值框，两者双向同步
+%
+%   输入
+%       name            参数名，与 +img/ 里的形参名一致
+%       defaultValue    默认值，必须落在 [minValue, maxValue] 内
+%       minValue        下界
+%       maxValue        上界
+%   输出
+%       p               参数定义 struct，Kind 为 "slider"
+%
+%   调用示例
+%       p = pSlider("gamma", 0.5, 0.05, 3);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "slider", ...
     "Min", minValue, "Max", maxValue);
@@ -200,6 +236,17 @@ function p = pEdit(name, defaultValue, minValue, maxValue)
 %
 %   滑块在 1e-6 这种量级上没法拖，所以不给滑块。范围仍然记下来，
 %   供 verifyPlatform.m 检查默认值是否越界。
+%
+%   输入
+%       name            参数名
+%       defaultValue    默认值，必须落在 [minValue, maxValue] 内
+%       minValue        下界
+%       maxValue        上界
+%   输出
+%       p               参数定义 struct，Kind 为 "edit"
+%
+%   调用示例
+%       p = pEdit("tol", 1e-6, 1e-9, 1e-2);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "edit", ...
     "Min", minValue, "Max", maxValue);
@@ -207,6 +254,16 @@ end
 
 function p = pChoice(name, defaultValue, options)
 %PCHOICE 枚举字符串参数，界面上给下拉框
+%
+%   输入
+%       name            参数名
+%       defaultValue    默认选项，必须是 options 里的一个
+%       options         候选值，字符串数组
+%   输出
+%       p               参数定义 struct，Kind 为 "choice"
+%
+%   调用示例
+%       p = pChoice("method", "bicubic", ["nearest", "bilinear", "bicubic"]);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "choice", ...
     "Options", options);
@@ -216,6 +273,22 @@ function p = pSize(name, defaultValue, minValue, maxValue)
 %PSIZE 二元素尺寸参数，界面上给两个数值框
 %
 %   Min / Max 是标量，对两个分量都适用。
+%
+%   defaultValue 的分量顺序随算法而定，界面按原样透传给算法，不做解释：
+%     targetSize  [行数, 列数] —— 与 imresize 的口径一致
+%     numTiles    [行块数, 列块数] —— CLAHE 的分块数
+%   上游 spec 与 +img/ 里对应函数的形参定义都以「先行后列」为准。
+%
+%   输入
+%       name            参数名
+%       defaultValue    [第一分量, 第二分量]，都必须落在 [minValue, maxValue] 内
+%       minValue        下界，对两个分量都适用
+%       maxValue        上界，对两个分量都适用
+%   输出
+%       p               参数定义 struct，Kind 为 "size"
+%
+%   调用示例
+%       p = pSize("targetSize", [120, 200], 1, 4096);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "size", ...
     "Min", minValue, "Max", maxValue);
@@ -295,16 +368,22 @@ failureCount = failureCount + checkEq("每类算法数（最小值）", ...
     min(perCategory), EXPECTED_PER_CAT);
 
 % ---------- 函数名与输出类型 ----------
-badPrefix = nnz(~startsWith(string({registry.Fcn}), "img."));
+fcnNames  = string({registry.Fcn});
+badPrefix = nnz(~startsWith(fcnNames, "img."));
 failureCount = failureCount + checkEq("Fcn 前缀不合规条数", badPrefix, 0);
+
+% 重名会让「已实现」计数重复，界面上还会多出一个同名按钮
+duplicateFcn = numel(fcnNames) - numel(unique(fcnNames));
+failureCount = failureCount + checkEq("Fcn 重名条数", duplicateFcn, 0);
 
 badOutput = nnz(~ismember(string({registry.Output}), VALID_OUTPUTS));
 failureCount = failureCount + checkEq("Output 取值不合规条数", badOutput, 0);
 
 % ---------- 参数定义 ----------
-badKind        = 0;
-badRange       = 0;
-missingOptions = 0;
+badKind          = 0;
+badRange         = 0;
+missingOptions   = 0;
+badChoiceDefault = 0;
 
 for kk = 1:numel(registry)
     params = registry(kk).Params;
@@ -314,18 +393,24 @@ for kk = 1:numel(registry)
         if ~ismember(string(p.Kind), VALID_KINDS)
             badKind = badKind + 1;
         end
-        if string(p.Kind) == "choice" && ~isfield(p, "Options")
-            missingOptions = missingOptions + 1;
-        end
         % Min / Max 是标量，Default 可能是二元素（size 类），逐元素比
         if isfield(p, "Min") && any(p.Default < p.Min | p.Default > p.Max)
             badRange = badRange + 1;
+        end
+        if string(p.Kind) == "choice"
+            if ~isfield(p, "Options")
+                missingOptions = missingOptions + 1;
+            elseif ~ismember(string(p.Default), string(p.Options))
+                % 默认值打错字的话，界面上表现为下拉框选不中或静默退回第一项
+                badChoiceDefault = badChoiceDefault + 1;
+            end
         end
     end
 end
 
 failureCount = failureCount + checkEq("Kind 取值不合规条数", badKind, 0);
 failureCount = failureCount + checkEq("choice 缺 Options 条数", missingOptions, 0);
+failureCount = failureCount + checkEq("choice 默认值不在选项里条数", badChoiceDefault, 0);
 failureCount = failureCount + checkEq("默认值越界条数", badRange, 0);
 
 % ---------- 实现情况（仅供参考，不算通过与否）----------
@@ -354,6 +439,16 @@ function nFail = checkEq(label, actual, expected)
 %
 %   不抛错。失败只打印明细，由脚本体累加后在末尾统一报错，
 %   这样一次运行能看到全部未通过项。
+%
+%   输入
+%       label       检查项名称
+%       actual      实测值
+%       expected    期望值
+%   输出
+%       nFail       未通过条数，0 或 1
+%
+%   调用示例
+%       failureCount = failureCount + checkEq("算法总数", numel(registry), 16);
 
 isPass = isequal(actual, expected);
 
@@ -380,14 +475,16 @@ cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charli
 
 Expected:
 ```
-类别数                    期望 8          实测 8          true
-算法总数                  期望 16         实测 16         true
-每类算法数（最小值）      期望 2          实测 2          true
-Fcn 前缀不合规条数        期望 0          实测 0          true
-Output 取值不合规条数     期望 0          实测 0          true
-Kind 取值不合规条数       期望 0          实测 0          true
-choice 缺 Options 条数    期望 0          实测 0          true
-默认值越界条数            期望 0          实测 0          true
+类别数                        期望 8          实测 8          true
+算法总数                      期望 16         实测 16         true
+每类算法数（最小值）          期望 2          实测 2          true
+Fcn 前缀不合规条数            期望 0          实测 0          true
+Fcn 重名条数                  期望 0          实测 0          true
+Output 取值不合规条数         期望 0          实测 0          true
+Kind 取值不合规条数           期望 0          实测 0          true
+choice 缺 Options 条数        期望 0          实测 0          true
+choice 默认值不在选项里条数   期望 0          实测 0          true
+默认值越界条数                期望 0          实测 0          true
 
 已实现 4/16 个：img.grayLinearStretch, img.grayGamma, img.threshOtsu, img.threshIterative
 
@@ -397,7 +494,44 @@ choice 缺 Options 条数    期望 0          实测 0          true
 退出码 0。**「已实现 4/16」这个数字必须是 4** —— 若是 0，说明 `which` 探测写错了
 （比如误用了 `exist`）；若是 16，说明探测恒真。
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 5: 负向探针 —— 证明每个计数器都真的会失败**
+
+**这一步不能省。** 全 `true` 的输出只能说明「当前没发现问题」，不能说明检查有效：
+一个写坏了的计数器（比如恒为 0）打印出来的也是 `0 / true / 全部通过`。
+所以要在临时副本上逐个注入错误，确认对应计数器真的会变非零。
+
+做法的关键限制：`verifyPlatform.m` 是脚本，它**自己内部**调 `imgRegistry()`，
+没法从外面喂一张坏表进去。所以只能**复制一份脚本**、在
+`registry = imgRegistry();` 那行后面插一句把表改坏。
+
+副本要放在 `platform/` 目录里 —— `run()` 会把 cwd 切到脚本所在目录，
+放 `/tmp` 的话 `imgRegistry()` 解析不到。跑完**把临时文件删掉，不要提交**。
+
+十种注入，以及各自应当变非零的计数器：
+
+| 注入 | 插在 `registry = imgRegistry();` 之后的那一句 | 应当变非零的计数器 |
+|---|---|---|
+| 类别数 | `registry(1).Category = "新类别";` | 类别数 |
+| 算法总数 | `registry(16) = [];` | 算法总数、每类算法数（最小值） |
+| 每类算法数 | `registry(2) = [];` | 算法总数、每类算法数（最小值） |
+| Fcn 前缀 | `registry(1).Fcn = "grayGamma";` | Fcn 前缀不合规条数、Fcn 重名条数 |
+| Fcn 重名 | `registry(2).Fcn = registry(1).Fcn;` | Fcn 重名条数 |
+| Output 取值 | `registry(1).Output = "pic";` | Output 取值不合规条数 |
+| Kind 取值 | `registry(1).Params{1}.Kind = "dial";` | Kind 取值不合规条数 |
+| choice 缺 Options | `registry(5).Params{2} = rmfield(registry(5).Params{2}, "Options");` | choice 缺 Options 条数 |
+| choice 默认值 | `registry(5).Params{2}.Default = "nope";` | choice 默认值不在选项里条数 |
+| 默认值越界 | `registry(1).Params{1}.Default = 999;` | 默认值越界条数 |
+
+用 `registry(5)` 是因为**第 5 条才是第一个带 `choice` 参数的登记项**
+（几何变换/旋转，参数是 `angle` 的 slider 与 `method` 的 choice）。
+`registry(1)` 是灰度变换/线性拉伸，两个参数都是 slider，没有 `Options` 字段，
+拿它做 choice 注入会直接报「无法识别的字段名」，测不到计数器。
+
+每种注入都把脚本**完整跑一遍**，把实际输出原样贴进报告 —— 这是「自检脚本本身
+有效」的证据。**若某个计数器怎么注入都不变非零**，说明那条检查写错了，
+要修 `verifyPlatform.m` 再重跑。
+
+- [ ] **Step 6: 提交**
 
 ```bash
 git add hw04-imageGeometry/platform/imgRegistry.m hw04-imageGeometry/platform/verifyPlatform.m
@@ -638,7 +772,16 @@ refreshEnableState();
         fcn    = str2func(entryNow.Fcn);
         tStart = tic;
         try
-            result = fcn(currentImage, args{:});
+            % 登记表里标了 ExtraLabel 的算法返回 [结果, 标量]，第二个返回值是
+            % 收敛阈值，要在信息行里显示出来 —— 它是阈值分割这道题的核心数字。
+            % 不能一律写成 [result, extra] = fcn(...)：只定义一个返回值的算法
+            % 被要两个输出会直接报「输出参数太多」。
+            if strlength(entryNow.ExtraLabel) > 0
+                [result, extraValue] = fcn(currentImage, args{:});
+            else
+                result     = fcn(currentImage, args{:});
+                extraValue = [];
+            end
         catch err
             uialert(fig, err.message, "算法执行失败");
             return;
@@ -647,16 +790,21 @@ refreshEnableState();
 
         resultImage = result;
 
+        extraText = "";
+        if ~isempty(extraValue)
+            extraText = sprintf("   %s %.4f", entryNow.ExtraLabel, extraValue);
+        end
+
         if entryNow.Output == "vector"
             % 特征描述子不是图像，用 plot 画
             plot(axResult, result);
             title(axResult, "结果（特征向量）");
-            infoLabel.Text = string(sprintf("维度 %d   耗时 %.3f s", ...
-                numel(result), elapsed));
+            infoLabel.Text = string(sprintf("维度 %d   耗时 %.3f s%s", ...
+                numel(result), elapsed, extraText));
         else
             showImage(axResult, result, AXES_LABEL_RESULT);
-            infoLabel.Text = string(sprintf("尺寸 %d×%d   类型 %s   耗时 %.3f s", ...
-                size(result, 1), size(result, 2), class(result), elapsed));
+            infoLabel.Text = string(sprintf("尺寸 %d×%d   类型 %s   耗时 %.3f s%s", ...
+                size(result, 1), size(result, 2), class(result), elapsed, extraText));
         end
 
         refreshEnableState();
@@ -800,6 +948,11 @@ function showImage(ax, I, labelText)
 %       ax          目标 uiaxes
 %       I           图像矩阵
 %       labelText   标题文字
+%   输出
+%       无（就地改写 ax）
+%
+%   调用示例
+%       showImage(axResult, result, "结果");
 
 imshow(I, "Parent", ax);
 title(ax, labelText);
@@ -813,12 +966,31 @@ function getter = makeGetter(control)
 %   必须写成工厂函数。直接在循环里写 @() sld.Value，所有句柄会共享循环变量
 %   sld 最终的值，取哪个控件的值都变成最后一个。实测过：工厂函数传参进去，
 %   每个句柄才各捕获各的。
+%
+%   输入
+%       control     任意有 Value 属性的控件（uislider / uieditfield / uidropdown）
+%   输出
+%       getter      无参函数句柄，调用返回该控件当前的 Value
+%
+%   调用示例
+%       getter = makeGetter(edt);
+%       v = getter();
 
 getter = @() control.Value;
 end
 
 function getter = makeSizeGetter(edtRow, edtCol)
 %MAKESIZEGETTER 返回一个把两个数值框读成 [行, 列] 的函数句柄
+%
+%   输入
+%       edtRow      行分量数值框
+%       edtCol      列分量数值框
+%   输出
+%       getter      无参函数句柄，调用返回 [行, 列] 二元素数组
+%
+%   调用示例
+%       getter = makeSizeGetter(edtRow, edtCol);
+%       targetSize = getter();
 
 getter = @() [edtRow.Value, edtCol.Value];
 end
@@ -827,18 +999,46 @@ function fh = makeCopyTo(source, target)
 %MAKECOPYTO 返回一个把 source 的 Value 抄给 target 的回调
 %
 %   匿名函数里不能写赋值语句，所以抄值这一步要交给 assignValue。
+%
+%   输入
+%       source      取值来源控件
+%       target      被写入的控件
+%   输出
+%       fh          两参数回调句柄，可直接赋给 ValueChangedFcn
+%
+%   调用示例
+%       sld.ValueChangedFcn = makeCopyTo(sld, edt);
 
 fh = @(~, ~) assignValue(target, source.Value);
 end
 
 function assignValue(control, newValue)
 %ASSIGNVALUE 把新值写进控件
+%
+%   单独拆出来是因为匿名函数里不能写赋值语句。
+%
+%   输入
+%       control     目标控件
+%       newValue    新值
+%   输出
+%       无（就地改写 control.Value）
+%
+%   调用示例
+%       assignValue(edt, 0.5);
 
 control.Value = newValue;
 end
 
 function value = onOff(isOn)
 %ONOFF 把 logical 转成控件 Enable 属性要的 "on" / "off"
+%
+%   输入
+%       isOn        logical 标量
+%   输出
+%       value       "on" 或 "off"
+%
+%   调用示例
+%       button.Enable = onOff(hasImage && isImplemented);
 
 if isOn
     value = "on";
@@ -944,6 +1144,16 @@ function nFail = checkEq(label, actual, expected)
 %
 %   与 verifyPlatform.m 里的同名函数职责相同，各自独立 —— MATLAB 的
 %   局部函数不跨文件共享。两处各十余行，暂不提升为公共函数。
+%
+%   输入
+%       label       检查项名称
+%       actual      实测值
+%       expected    期望值
+%   输出
+%       nFail       未通过条数，0 或 1
+%
+%   调用示例
+%       failureCount = failureCount + checkEq("算法按钮数", numel(algorithmNames), 16);
 
 isPass = isequal(actual, expected);
 
@@ -1044,7 +1254,12 @@ Expected:
 拖动滑块与输入数值框**两个方向都要试** —— 走的是不同的回调，只试一个会漏掉另一个。
 
 再点「Otsu」（它没有入参），参数区应显示「该算法无可调参数」，执行后结果区
-是二值图，信息行的类型是 `logical`。
+是二值图，信息行的类型是 `logical`，**并且末尾多出一段 `阈值 0.5255`**。
+
+Otsu 与迭代法都返回 `[BW, level]` 两个值，登记表里用 `ExtraLabel` 标了第二个
+返回值叫什么，界面按需取两个输出并显示。实测这张照片上 Otsu 的阈值是 0.5255、
+迭代法是 0.5278 —— 两个算法在真实照片上给出的阈值很接近，这也是它们都合理的
+一个旁证。再点「迭代法」确认它的信息行末尾是 `阈值 0.5278`。
 
 - [ ] **Step 7（人工）: 核对算法报错会弹窗，而不是静默失败**
 
@@ -1248,7 +1463,9 @@ Expected: 三支都打印「全部通过」，最后 echo 出「三支脚本退�
 5. **执行。** 点「执行」，结果区出现提亮后的图，信息行显示尺寸、类型与耗时
    （实测约 0.10 s）。
 6. **换个算法。** 点「Otsu」，参数区变成「该算法无可调参数」（它没有入参），
-   执行后得到二值图，信息行里类型是 `logical`。
+   执行后得到二值图，信息行里类型是 `logical`，末尾还有一段 `阈值 0.5255`。
+   换个「迭代法」再跑，末尾应是 `阈值 0.5278` —— 两个算法在这张照片上给出的
+   阈值很接近，互相印证。
 7. **看报错会不会被吞。** 点「线性拉伸」，把 `lowIn` 拖到 200、`highIn` 拖到 100
    （低界高于高界），点「执行」。应弹出消息框，正文含
    `highIn(100) 必须大于 lowIn(200)，否则拉伸区间为空。` ——
