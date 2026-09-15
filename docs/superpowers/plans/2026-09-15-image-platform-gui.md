@@ -49,7 +49,7 @@
 | 真实照片 4284×5712 四个算法 | 合计 0.514 s | 不需要缩略图，直接跑全图 |
 | `-batch` 下 `uifigure` | **能正常创建** | 冒烟测试可以在 `-batch` 里跑，不依赖桌面 |
 | `findall(fig,"Type","uibutton")` | 能找到可滚动面板里的按钮 | 冒烟测试用它清点控件 |
-| `findall` 的遍历深度 | 到第 4 层为止，**第 5 层找不到** | 只能断言按钮层；参数行标签（`panel → paramGrid → rowGrid → label`，第 5 层）够不着 |
+| `findall` 的遍历深度 | **没有深度限制**（实测 8 层嵌套 grid 里各放一个标签，全部返回） | 冒烟测试只清点按钮层，是因为没写参数区的断言，不是因为够不着 |
 
 ---
 
@@ -1165,8 +1165,9 @@ end
 fig = allFigures(find(isOurs, 1));
 
 % ---------- 控件清点 ----------
-% findall 能穿进可滚动面板，深度到第 4 层为止。下面的断言都取第 3~4 层的按钮。
-% 参数行里的标签在第 5 层，findall 够不着，所以不在这里断言 —— 见文件头说明。
+% 下面的断言只覆盖按钮层。参数区那些控件不是 findall 够不着（它没有深度限制，
+% 实测 8 层嵌套仍全部返回），只是本脚本没写那部分的断言 —— 参数区的样子靠
+% notes.md 的人工清单核。
 buttons    = findall(fig, "Type", "uibutton");
 buttonText = string({buttons.Text});
 
@@ -1203,6 +1204,17 @@ end
 nBlackText = nnz(arrayfun(@(btn) isequal(btn.FontColor, [0 0 0]), algorithmButtons));
 failureCount = failureCount + checkEq("未载图时黑字按钮数（应等于已实现数）", ...
     nBlackText, nnz(isImplemented));
+
+% ---------- 左栏从上到下的顺序 ----------
+% 可滚动面板的坐标原点在左下角、y 轴向上，所以 y 大的在屏幕上方。
+% 这条断言是为一个真实出过的 bug 加的：最初从下往上摆，整个列表上下颠倒
+% （登记表第一条落到了最底部），而只清点按钮数量的断言完全看不出来 ——
+% 那个 bug 一路穿过三次审查，最后靠人工看截图才发现。
+positions = arrayfun(@(btn) btn.Position(2), algorithmButtons);
+[~, screenOrder] = sort(positions, "descend");     % 自上而下
+orderedTexts = string({algorithmButtons(screenOrder).Text});
+failureCount = failureCount + checkEq("左栏自上而下的算法名与登记表一致", ...
+    isequal(orderedTexts(:), expectedNames(:)), true);
 
 close(fig);
 
@@ -1265,6 +1277,7 @@ Expected:
 未载图时「执行」灰            期望 false      实测 false      true
 未载图时「保存结果」灰        期望 false      实测 false      true
 未载图时黑字按钮数（应等于已实现数） 期望 4    实测 4          true
+左栏自上而下的算法名与登记表一致     期望 true   实测 true       true
 
 全部通过
 ```
@@ -1580,8 +1593,8 @@ Expected: 三支都打印「全部通过」，最后 echo 出「三支脚本退�
 | `verifyPlatformGui.m` | 界面结构：窗口数、16 个算法按钮与登记表名称一致、未载图时全部置灰 | 自动，退出码 0 |
 
 `verifyPlatformGui.m` 是程序化构造界面再清点控件的冒烟测试，所以界面「搭得对不对」
-也有自动门禁，不是全靠人看。它靠 `findall` 找控件 —— 实测 `findall` 能穿进可滚动
-面板，但**只到第 4 层**，参数行里的标签在第 5 层够不着，所以断言只覆盖按钮层。
+也有自动门禁，不是全靠人看。它靠 `findall` 找控件，断言只覆盖**按钮层** ——
+不是够不着参数区（`findall` 没有深度限制），是本脚本没写那部分的断言。
 
 剩下真正要人眼的部分（图像显示效果、拖动滑块的手感、报错弹窗内容、
 保存对话框的格式列表）靠上面第 5 节那份清单过一遍。
