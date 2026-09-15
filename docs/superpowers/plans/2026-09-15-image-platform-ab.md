@@ -4,7 +4,7 @@
 
 **Goal:** 在 `hw04-imageGeometry/platform/` 下实现 8 类共 16 个手写图像处理算法，并写一个自动验证脚本，逐个与 MATLAB 图像处理工具箱对照，不达标的项全部跑完后统一汇总并以非零退出码结束。
 
-**Architecture:** 算法放包目录 `+img/`，调用写成 `img.geomRotate(...)`，不写 `addpath`（实测包目录在 cwd 或 path 含其父目录时可解析）。`verifyAlgorithms.m` 是唯一的验证入口，顶部集中定义阈值常量，用局部函数 `reportRow` 统一打印与判定：它不抛错，失败只打印明细并返回 `isPass`，由各验证函数累加条数，脚本跑完全部算法后在末尾统一报错。
+**Architecture:** 算法放包目录 `+img/`，调用写成 `img.geomRotate(...)`，不写 `addpath`（实测包目录在 cwd 或 path 含其父目录时可解析）。`verifyAlgorithms.m` 是唯一的验证入口，用局部函数 `reportRow` 统一打印与判定：它不抛错，失败只打印明细并返回 `isPass`，由各验证函数累加条数，脚本跑完全部算法后在末尾统一报错。阈值常量声明在各 `verifyXxx` 局部函数开头——脚本的局部函数有独立工作区，读不到脚本体变量，所以做不到「顶部集中定义」。
 
 **Tech Stack:** MATLAB R2025b，Image Processing Toolbox 25.2、Computer Vision Toolbox 25.2（均本机已装）。
 
@@ -210,7 +210,9 @@ level = mean(data(:));
 
 for iter = 1:MAX_ITERATION
     isForeground = data > level;
-    if ~any(isForeground) || all(isForeground)
+    % any/all 默认沿第一个非单例维归约，矩阵输入会返回行向量，|| 要求标量操作数，
+    % 必须显式加 "all"（Requires R2018b+）
+    if ~any(isForeground, "all") || all(isForeground, "all")
         break;                          % 退化成单一分组，无阈值可言
     end
     levelNew = (mean(data(~isForeground)) + mean(data(isForeground))) / 2;
@@ -229,11 +231,17 @@ else
 end
 
 level = level / intensityMax;   % 归一化到 [0,1] 供调用者比较
+
+% BW 为真等价于 I > 绝对阈值，与上面归一化后的 level 口径一致
+BW = I > level * intensityMax;
 end
 ```
 
-`level` 在循环里是绝对灰度值，最后才归一化，所以返回的是 `[0,1]` 标量。注意 `BW` 与
-`level` 的关系：`BW` 为真等价于 `I > level * intensityMax`，即 `I > 绝对阈值`。
+`level` 在循环里是绝对灰度值，最后才归一化，所以返回的是 `[0,1]` 标量。
+
+注意 `BW` 这一行必须有。上面那段浮点量纲的 `if/else` 很容易让人以为「归一化完就结束
+了」，漏掉 `BW` 的赋值。漏了的话函数仍能跑，但第二个返回值是空的，验证脚本会静默地
+拿到一个未赋值的 `BW`。`check_matlab_code` 能查出这个。
 
 - [ ] **Step 4: 写 verifyAlgorithms.m**
 
@@ -255,8 +263,9 @@ end
 clear; clc; close all;
 
 % ---------- 判定阈值 ----------
-OTSUTHRESH_TOL   = 1e-12;   % Otsu 是确定性算法，手写版与工具箱应逐位相等
-JACCARD_MIN_BIN  = 0.90;    % 二值分割结果的重叠度
+% 阈值常量不放在脚本体里：脚本的局部函数有独立工作区，读不到脚本变量。
+% 所以每类算法自己的阈值常量声明在对应 verifyXxx 函数的开头，与 +img 里
+% NUM_BINS、下面 reportRow 的 DEFAULT_DIRECTION 是同一种写法。
 
 % ---------- 测试图像 ----------
 % cameraman 是双峰直方图的典型；rice 偏亮、直方图偏斜，适合区分两种阈值算法
@@ -288,6 +297,9 @@ fprintf("\n全部通过\n");
 
 function nFail = verifyThresholding(images)
 %VERIFYTHRESHOLDING 验证两种阈值分割算法，返回未通过的条数
+
+OTSUTHRESH_TOL   = 1e-12;   % Otsu 是确定性算法，手写版与工具箱应逐位相等
+JACCARD_MIN_BIN  = 0.90;    % 二值分割结果的重叠度
 
 nFail = 0;
 
@@ -369,14 +381,18 @@ Expected: 打印「【阈值分割】」段共 6 行，每行末列为 `true`，
 
 如果 Otsu 的阈值差不为 0，先查 `imhist` 的 bin 数是否一致（本实现固定 256 档），再查阈值换算公式；不要直接放宽 `OTSUTHRESH_TOL`。
 
-**后续任务往这个脚本里加新类别时，照这个模式加三处**：
+**后续任务往这个脚本里加新类别时，照这个模式加两处**：
 
-1. 阈值常量加在「判定阈值」区；
-2. 在 `if failureCount > 0` 之前加一行 `failureCount = failureCount + verifyXxx(IMAGES);`（前面配一个 `fprintf` 打类别名）；
-3. 在局部函数区末尾加 `function nFail = verifyXxx(images)`，内部每条断言写成
-   `nFail = nFail + ~reportRow(...);`。
+1. 在 `if failureCount > 0` 之前加一行 `failureCount = failureCount + verifyXxx(IMAGES);`（前面配一个 `fprintf` 打类别名）；
+2. 在局部函数区末尾加 `function nFail = verifyXxx(images)`，把该类自己的阈值常量声明在函数开头，内部每条断言写成 `nFail = nFail + ~reportRow(...);`。
 
 `~isPass` 把 logical 转成 0/1 直接累加，避免再写一个 if 分支。
+
+**阈值常量必须声明在使用它的局部函数内部，不能放在脚本体里。** 已实测：MATLAB
+脚本的局部函数有独立工作区，读不到脚本变量（脚本里定义常量后，局部函数内
+`exist("常量名", "var")` 返回 `0`）。所以「顶部集中定义阈值」这个想法在 MATLAB 里
+做不到，每类算法的阈值与它的断言放在一起。这与 `+img/` 里 `NUM_BINS`、
+`reportRow` 里 `DEFAULT_DIRECTION` 是同一种写法。
 
 - [ ] **Step 6: 提交**
 
@@ -400,9 +416,9 @@ git commit -m "feat: 图像处理平台骨架与验证框架，含 Otsu 与迭�
   - `out = img.grayLinearStretch(I, lowIn, highIn)` — 把 `[lowIn, highIn]` 拉伸到整个动态范围，超出部分截断
   - `out = img.grayGamma(I, gamma)` — 幂律变换 `s = r^gamma`
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
-在 `verifyAlgorithms.m` 的阈值常量区追加：
+这两个阈值常量声明在下面 `verifyIntensity` 函数的开头（脚本的局部函数读不到脚本体变量）：
 
 ```matlab
 PSNR_MIN_POINTWISE = 45;    % 逐像素映射类，手写与工具箱应几乎完全一致
@@ -570,7 +586,7 @@ git commit -m "feat: 灰度变换类算法（线性拉伸、伽马变换）并�
   - `out = img.histEqualize(I, numLevels)` — 全局 CDF 均衡
   - `out = img.histClahe(I, numTiles, clipLimit)` — 分块自适应均衡，块间双线性插值
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 PSNR_MIN_HISTEQ  = 40;      % 直方图均衡，取整口径可能略有不同
@@ -813,7 +829,7 @@ git commit -m "feat: 直方图均衡类算法（全局 CDF、CLAHE）并通过�
   - `out = img.filterMean(I, kernelSize)` — `kernelSize` 为奇数标量，如 3、5
   - `out = img.filterMedian(I, kernelSize)` — 边界补零，与 `medfilt2` 默认一致
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 PSNR_MIN_SPATIAL = 45;      % 均值滤波与 imfilter 应完全一致
@@ -982,7 +998,7 @@ git commit -m "feat: 空域滤波类算法（均值、中值）并通过验证"
   - `out = img.geomRotate(I, angle, method)` — 逆时针为正，`method` 取 `"nearest"` / `"bilinear"` / `"bicubic"`
   - `out = img.geomScale(I, targetSize, method)` — `targetSize` 为 `[行数, 列数]`
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 PSNR_MIN_GEOMETRY  = 30;    % 几何变换，插值实现细节不同，放宽
@@ -1208,7 +1224,7 @@ git commit -m "feat: 几何变换类算法（逆映射旋转、双线性缩放�
   - `out = img.freqIdealLP(I, cutoff)` — `cutoff` 为归一化截止频率 `(0, 0.5]`
   - `out = img.freqButterLP(I, cutoff, order)` — `order` 为巴特沃斯阶数
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 RECON_TOL        = 1e-9;    % 全通掩膜下 ifft2(fft2(I)) 应无损重建
@@ -1403,7 +1419,7 @@ git commit -m "feat: 频域滤波类算法（理想低通、巴特沃斯低通�
   - `BW = img.edgeSobel(I, threshold)` — `threshold` 为相对于最大梯度幅值的比例，`[0,1]`
   - `BW = img.edgePrewitt(I, threshold)` — 同上
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 JACCARD_MIN_EDGE   = 0.85;  % edge 会做细化，手写版不做，重叠度到不了 1
@@ -1608,7 +1624,7 @@ git commit -m "feat: 边缘检测类算法（Sobel、Prewitt）并通过验证"
   - `feat = img.featHOG(I, cellSize, numBins)` — 返回 HOG 特征行向量
   - `feat = img.featLBP(I, numNeighbors)` — 返回 LBP 直方图行向量
 
-- [ ] **Step 1: 追加阈值常量与调用行**
+- [ ] **Step 1: 追加调用行，并在验证函数开头声明阈值常量**
 
 ```matlab
 CORR_MIN_FEATURE = 0.99;   % 特征描述子的相关系数
