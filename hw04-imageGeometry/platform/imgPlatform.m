@@ -314,16 +314,26 @@ refreshEnableState();
     function buttons = buildAlgorithmList(parentPanel)
         % 左栏是滚动面板，子控件用绝对定位 —— 实测滚动面板里的 uigridlayout
         % 高度恒等于面板内高、不随内容增长，超出的部分被裁掉且滚不到。
+        %
+        % 坐标原点在**左下角**、y 轴向上增长。所以绝不能从 PANEL_PAD 开始
+        % 递增着摆 —— 那样第一条会落在最底下、整个列表上下颠倒，类别标签
+        % 还会跑到它自己那两个按钮的下方。正确做法是先算出内容总高，
+        % 再从顶部往下排。
         buttons          = gobjects(numel(registry), 1);
         categories       = string({registry.Category});
         uniqueCategories = unique(categories, "stable");
 
-        yCursor = PANEL_PAD;
+        contentHeight = PANEL_PAD ...
+            + numel(uniqueCategories) * (LABEL_HEIGHT + 2) ...
+            + numel(registry) * (ROW_HEIGHT + ROW_GAP);
+
+        yCursor = contentHeight;   % 从内容顶端开始，往下（y 减小）排
         for cc = 1:numel(uniqueCategories)
             uilabel(parentPanel, "Text", uniqueCategories(cc), ...
                 "FontWeight", "bold", ...
-                "Position", [PANEL_PAD, yCursor, BUTTON_WIDTH, LABEL_HEIGHT]);
-            yCursor = yCursor + LABEL_HEIGHT + 2;
+                "Position", [PANEL_PAD, yCursor - LABEL_HEIGHT, ...
+                             BUTTON_WIDTH, LABEL_HEIGHT]);
+            yCursor = yCursor - LABEL_HEIGHT - 2;
 
             for kk = 1:numel(registry)
                 if categories(kk) ~= uniqueCategories(cc)
@@ -331,9 +341,10 @@ refreshEnableState();
                 end
                 buttons(kk) = uibutton(parentPanel, ...
                     "Text", registry(kk).Name, ...
-                    "Position", [PANEL_PAD, yCursor, BUTTON_WIDTH, ROW_HEIGHT], ...
+                    "Position", [PANEL_PAD, yCursor - ROW_HEIGHT, ...
+                                 BUTTON_WIDTH, ROW_HEIGHT], ...
                     "ButtonPushedFcn", makeAlgorithmCallback(kk));
-                yCursor = yCursor + ROW_HEIGHT + ROW_GAP;
+                yCursor = yCursor - ROW_HEIGHT - ROW_GAP;
             end
         end
     end
