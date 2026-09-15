@@ -36,6 +36,24 @@ end
 rgbImage = imread(photoPath);
 A = rgb2gray(rgbImage);
 
-fprintf("源照片 : %s\n", photoPath);
+% ---------- 第 2、3 问：两次旋转 ----------
+tRotate = tic;
+B = imrotate(A, ANGLE_CCW, INTERP_METHOD);
+C = imrotate(A, ANGLE_CW,  INTERP_METHOD);
+rotateSeconds = toc(tRotate);
+
+% ---------- 第 4 问：缩放为固定大小 ----------
+tResize = tic;
+D = imresize(A, TARGET_SIZE);
+resizeSeconds = toc(tResize);
+
+% ---------- 结果汇总 ----------
+fprintf("源照片  : %s\n", photoPath);
 fprintf("彩色原图: %d x %d x %d  %s\n", size(rgbImage), class(rgbImage));
-fprintf("A 灰度图: %d x %d  %s\n", size(A), class(A));
+fprintf("A 灰度图         %5d x %5d\n", size(A));
+fprintf("B 逆时针 %+3d°    %5d x %5d   黑边占比 %4.1f%%\n", ...
+    ANGLE_CCW, size(B), 100 * mean(B(:) == 0));
+fprintf("C 顺时针 %+3d°    %5d x %5d   黑边占比 %4.1f%%\n", ...
+    ANGLE_CW, size(C), 100 * mean(C(:) == 0));
+fprintf("D 缩放 %d x %d  %5d x %5d\n", TARGET_SIZE, size(D));
+fprintf("耗时: 旋转 %.2f s，缩放 %.3f s\n", rotateSeconds, resizeSeconds);
