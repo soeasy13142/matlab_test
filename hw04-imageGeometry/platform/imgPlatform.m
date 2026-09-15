@@ -302,7 +302,7 @@ refreshEnableState();
 
     function buttons = buildAlgorithmList(parentPanel)
         % 左栏是滚动面板，子控件用绝对定位 —— 实测滚动面板里的 uigridlayout
-        % 不会按内容撑高（停在默认 100×100），滚动不生效。
+        % 高度恒等于面板内高、不随内容增长，超出的部分被裁掉且滚不到。
         buttons          = gobjects(numel(registry), 1);
         categories       = string({registry.Category});
         uniqueCategories = unique(categories, "stable");
