@@ -514,7 +514,7 @@ choice 默认值不在选项里条数   期望 0          实测 0          true
 | 类别数 | `registry(1).Category = "新类别";` | 类别数 |
 | 算法总数 | `registry(16) = [];` | 算法总数、每类算法数（最小值） |
 | 每类算法数 | `registry(2) = [];` | 算法总数、每类算法数（最小值） |
-| Fcn 前缀 | `registry(1).Fcn = "grayGamma";` | Fcn 前缀不合规条数、Fcn 重名条数 |
+| Fcn 前缀 | `registry(1).Fcn = "grayGamma";` | Fcn 前缀不合规条数（**不含** Fcn 重名条数） |
 | Fcn 重名 | `registry(2).Fcn = registry(1).Fcn;` | Fcn 重名条数 |
 | Output 取值 | `registry(1).Output = "pic";` | Output 取值不合规条数 |
 | Kind 取值 | `registry(1).Params{1}.Kind = "dial";` | Kind 取值不合规条数 |
