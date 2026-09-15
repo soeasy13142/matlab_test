@@ -13,7 +13,10 @@
 % 为什么不并进 verifyPlatform.m：那个只验登记表、不开界面。两者的失败模式
 % 不同（界面搭错了 vs 表填错了），分开更好定位。
 
-clear; clc; close all;
+% 用 close all force 而不是 close all —— 实测 close all 关不掉 uifigure
+% （前后都是 2 个窗口，加 force 才清空）。若用户正开着界面时跑本脚本，
+% 残留窗口会让下面的窗口计数断言误判，掩盖真实错误。
+clear; clc; close all force;
 
 FIG_NAME_KEYWORD = "图像处理实验平台";
 % 顶栏与参数区的三个非算法按钮，其余 uibutton 都应当是算法按钮
@@ -35,6 +38,7 @@ isOurs     = contains(string({allFigures.Name}), FIG_NAME_KEYWORD);
 failureCount = failureCount + checkEq("标题含关键字的窗口数", nnz(isOurs), 1);
 
 if nnz(isOurs) ~= 1
+    close(allFigures(isOurs));   % 先清掉现场，别把窗口留在桌面上
     error("matlab_test:guiSmokeFailed", ...
         "imgPlatform() 应当开出恰好 1 个标题含「%s」的窗口，实测 %d 个。" + ...
         "请检查 imgPlatform.m 里的 uifigure 调用。", FIG_NAME_KEYWORD, nnz(isOurs));
@@ -42,8 +46,9 @@ end
 fig = allFigures(find(isOurs, 1));
 
 % ---------- 控件清点 ----------
-% findall 能穿进可滚动面板，深度到第 4 层为止。下面的断言都取第 3~4 层的按钮。
-% 参数行里的标签在第 5 层，findall 够不着，所以不在这里断言 —— 见文件头说明。
+% 下面的断言只覆盖按钮层。参数区那些控件不是 findall 够不着（它没有深度限制，
+% 实测 8 层嵌套仍全部返回），只是本脚本没写那部分的断言 —— 参数区的样子靠
+% notes.md 的人工清单核。
 buttons    = findall(fig, "Type", "uibutton");
 buttonText = string({buttons.Text});
 
@@ -80,6 +85,17 @@ end
 nBlackText = nnz(arrayfun(@(btn) isequal(btn.FontColor, [0 0 0]), algorithmButtons));
 failureCount = failureCount + checkEq("未载图时黑字按钮数（应等于已实现数）", ...
     nBlackText, nnz(isImplemented));
+
+% ---------- 左栏从上到下的顺序 ----------
+% 可滚动面板的坐标原点在左下角、y 轴向上，所以 y 大的在屏幕上方。
+% 这条断言是为一个真实出过的 bug 加的：最初从下往上摆，整个列表上下颠倒
+% （登记表第一条落到了最底部），而只清点按钮数量的断言完全看不出来 ——
+% 那个 bug 一路穿过三次审查，最后靠人工看截图才发现。
+positions = arrayfun(@(btn) btn.Position(2), algorithmButtons);
+[~, screenOrder] = sort(positions, "descend");     % 自上而下
+orderedTexts = string({algorithmButtons(screenOrder).Text});
+failureCount = failureCount + checkEq("左栏自上而下的算法名与登记表一致", ...
+    isequal(orderedTexts(:), expectedNames(:)), true);
 
 close(fig);
 
