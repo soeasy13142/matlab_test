@@ -437,7 +437,7 @@ failureCount = failureCount + verifyIntensity(IMAGES);
 `hw04-imageGeometry/platform/+img/grayLinearStretch.m`：
 
 ```matlab
-function out = img.grayLinearStretch(I, lowIn, highIn)
+function out = grayLinearStretch(I, lowIn, highIn)
 %GRAYLINEARSTRETCH 把输入灰度区间线性拉伸到整个动态范围
 %
 %   映射关系为
@@ -465,8 +465,14 @@ if highIn <= lowIn
         "highIn(%g) 必须大于 lowIn(%g)，否则拉伸区间为空。", highIn, lowIn);
 end
 
+% 浮点输入按 [0,1] 量纲处理（与 imadjust 的口径一致），不能取 intmax("double")
+if isinteger(I)
+    maxValue = double(intmax(class(I)));
+else
+    maxValue = 1;
+end
+
 cls = class(I);
-maxValue = double(intmax(cls));
 data = double(I);
 
 stretched = (data - double(lowIn)) / double(highIn - lowIn) * maxValue;
@@ -481,7 +487,7 @@ end
 `hw04-imageGeometry/platform/+img/grayGamma.m`：
 
 ```matlab
-function out = img.grayGamma(I, gamma)
+function out = grayGamma(I, gamma)
 %GRAYGAMMA 幂律（伽马）灰度变换
 %
 %   先把输入归一化到 [0,1]，做 s = r^gamma，再换算回原类型。
@@ -510,8 +516,14 @@ if gamma < MIN_GAMMA
         "gamma 必须是正数，当前为 %g。", gamma);
 end
 
+% 浮点输入按 [0,1] 量纲处理（与 imadjust 的口径一致），不能取 intmax("double")
+if isinteger(I)
+    maxValue = double(intmax(class(I)));
+else
+    maxValue = 1;
+end
+
 cls = class(I);
-maxValue = double(intmax(cls));
 normalized = double(I) / maxValue;
 
 out = cast(normalized.^gamma * maxValue, cls);
@@ -605,7 +617,7 @@ failureCount = failureCount + verifyHistogram(IMAGES);
 - [ ] **Step 2: 写 histEqualize.m**
 
 ```matlab
-function out = img.histEqualize(I, numLevels)
+function out = histEqualize(I, numLevels)
 %HISTEQUALIZE 全局直方图均衡
 %
 %   用累积分布函数做灰度映射。设第 k 档灰度的累积概率为 cdf(k)，
@@ -633,8 +645,14 @@ if ~ismatrix(I)
         "histEqualize 只接受二维灰度图，当前输入是 %d 维。", ndims(I));
 end
 
+% 浮点输入按 [0,1] 量纲处理（与 imhist 的口径一致），不能取 intmax("double")
+if isinteger(I)
+    maxValue = double(intmax(class(I)));
+else
+    maxValue = 1;
+end
+
 cls = class(I);
-maxValue = double(intmax(cls));
 
 counts = imhist(I, numLevels);
 
@@ -657,7 +675,7 @@ end
 - [ ] **Step 3: 写 histClahe.m**
 
 ```matlab
-function out = img.histClahe(I, numTiles, clipLimit)
+function out = histClahe(I, numTiles, clipLimit)
 %HISTCLAHE 对比度受限的分块自适应直方图均衡（CLAHE）
 %
 %   步骤：
@@ -693,8 +711,14 @@ if ~ismatrix(I)
         "histClahe 只接受二维灰度图，当前输入是 %d 维。", ndims(I));
 end
 
+% 浮点输入按 [0,1] 量纲处理（与 imhist 的口径一致），不能取 intmax("double")
+if isinteger(I)
+    maxValue = double(intmax(class(I)));
+else
+    maxValue = 1;
+end
+
 cls = class(I);
-maxValue = double(intmax(cls));
 data = double(I) / maxValue;                 % 归一化到 [0,1]
 [imageH, imageW] = size(data);
 
@@ -848,7 +872,7 @@ failureCount = failureCount + verifySpatial(IMAGES);
 - [ ] **Step 2: 写 filterMean.m**
 
 ```matlab
-function out = img.filterMean(I, kernelSize)
+function out = filterMean(I, kernelSize)
 %FILTERMEAN 均值滤波
 %
 %   用 kernelSize × kernelSize 的归一化均值模板做卷积，边界补零。
@@ -884,7 +908,7 @@ end
 - [ ] **Step 3: 写 filterMedian.m**
 
 ```matlab
-function out = img.filterMedian(I, kernelSize)
+function out = filterMedian(I, kernelSize)
 %FILTERMEDIAN 中值滤波
 %
 %   kernelSize × kernelSize 邻域内取中位数。边界补零，与 medfilt2 的默认
@@ -1016,7 +1040,7 @@ failureCount = failureCount + verifyGeometry(IMAGES);
 - [ ] **Step 2: 写 geomRotate.m**
 
 ```matlab
-function out = img.geomRotate(I, angle, method)
+function out = geomRotate(I, angle, method)
 %GEOMROTATE 绕图像中心逆时针旋转，边界补零
 %
 %   旋转后输出尺寸取原图的外接矩形
@@ -1088,7 +1112,7 @@ end
 - [ ] **Step 3: 写 geomScale.m**
 
 ```matlab
-function out = img.geomScale(I, targetSize, method)
+function out = geomScale(I, targetSize, method)
 %GEOMSCALE 用 interp2 把图像缩放到指定尺寸
 %
 %   为保持与 imresize 一致，缩放后的采样网格按
@@ -1241,7 +1265,7 @@ failureCount = failureCount + verifyFrequency(IMAGES);
 - [ ] **Step 2: 写 freqIdealLP.m**
 
 ```matlab
-function out = img.freqIdealLP(I, cutoff)
+function out = freqIdealLP(I, cutoff)
 %FREQIDEALLP 理想低通频域滤波
 %
 %   把图像做二维傅里叶变换并中心化，然后把到中心的归一化距离超过 cutoff
@@ -1287,7 +1311,7 @@ end
 - [ ] **Step 3: 写 freqButterLP.m**
 
 ```matlab
-function out = img.freqButterLP(I, cutoff, order)
+function out = freqButterLP(I, cutoff, order)
 %FREQBUTTERLP 巴特沃斯低通频域滤波
 %
 %   巴特沃斯低通的传递函数为
@@ -1438,7 +1462,7 @@ failureCount = failureCount + verifyEdge(IMAGES);
 - [ ] **Step 2: 写 edgeSobel.m**
 
 ```matlab
-function [BW, magnitude] = img.edgeSobel(I, threshold)
+function [BW, magnitude] = edgeSobel(I, threshold)
 %EDGESOBEL 用 Sobel 算子做边缘检测
 %
 %   Sobel 的两个卷积核为
@@ -1495,7 +1519,7 @@ end
 - [ ] **Step 3: 写 edgePrewitt.m**
 
 ```matlab
-function [BW, magnitude] = img.edgePrewitt(I, threshold)
+function [BW, magnitude] = edgePrewitt(I, threshold)
 %EDGEPREWITT 用 Prewitt 算子做边缘检测
 %
 %   Prewitt 与 Sobel 的区别只在核的权重：Prewitt 不做中心行/列的加权，
@@ -1657,7 +1681,7 @@ cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "help extractHOGFea
 - [ ] **Step 3: 写 featHOG.m**
 
 ```matlab
-function feat = img.featHOG(I, cellSize, numBins)
+function feat = featHOG(I, cellSize, numBins)
 %FEATHOG 提取方向梯度直方图（HOG）特征
 %
 %   流程：
@@ -1761,7 +1785,7 @@ end
 - [ ] **Step 4: 写 featLBP.m**
 
 ```matlab
-function feat = img.featLBP(I, numNeighbors)
+function feat = featLBP(I, numNeighbors)
 %FEATLBP 提取局部二值模式（LBP）直方图特征
 %
 %   对每个像素，取以它为中心、半径 1 的圆环上 numNeighbors 个采样点

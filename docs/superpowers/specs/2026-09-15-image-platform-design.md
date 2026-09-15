@@ -146,7 +146,9 @@ feat = img.featLBP(I, numNeighbors)
 ```matlab
 PSNR_MIN_GEOMETRY  = 30;    % 几何变换，插值实现细节不同，放宽
 SSIM_MIN_GEOMETRY  = 0.95;
-PSNR_MIN_INTENSITY = 40;    % 灰度变换，属逐像素映射，应很接近
+PSNR_MIN_POINTWISE = 45;    % 灰度变换，属逐像素映射，应很接近（实测伽马变换与
+                            % imadjust 逐位相等，PSNR 为 Inf；线性拉伸相差 ≤2 灰阶）
+SSIM_MIN_POINTWISE = 0.999;
 ...
 JACCARD_MIN_EDGE   = 0.85;  % 边缘检测，边界处理与细化策略不同
 CORR_MIN_FEATURE   = 0.99;  % 特征描述子
