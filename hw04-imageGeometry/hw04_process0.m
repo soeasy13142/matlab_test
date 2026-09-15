@@ -47,6 +47,30 @@ tResize = tic;
 D = imresize(A, TARGET_SIZE);
 resizeSeconds = toc(tResize);
 
+% ---------- 第 5 问：2x2 子图显示，并保存为 process0.jpg ----------
+figure("Name", "作业四：图像的几何运算");
+
+subplot(2, 2, 1);
+imshow(A);
+title("原灰度图 A");
+
+subplot(2, 2, 2);
+imshow(B);
+title(sprintf("逆时针旋转 %d°  B", ANGLE_CCW));
+
+subplot(2, 2, 3);
+imshow(C);
+title(sprintf("顺时针旋转 %d°  C", -ANGLE_CW));
+
+subplot(2, 2, 4);
+imshow(D);
+title(sprintf("缩放为 %d×%d  D", TARGET_SIZE(1), TARGET_SIZE(2)));
+
+sgtitle("Plot by " + STUDENT_SIGNATURE);
+
+% 导出当前图形窗口。jpg 无透明通道，用 exportgraphics 比 saveas 画质更稳
+exportgraphics(gcf, outJpgPath, "Resolution", 150);
+
 % ---------- 结果汇总 ----------
 fprintf("源照片  : %s\n", photoPath);
 fprintf("彩色原图: %d x %d x %d  %s\n", size(rgbImage), class(rgbImage));
@@ -57,3 +81,4 @@ fprintf("C 顺时针 %+3d°    %5d x %5d   黑边占比 %4.1f%%\n", ...
     ANGLE_CW, size(C), 100 * mean(C(:) == 0));
 fprintf("D 缩放 %d x %d  %5d x %5d\n", TARGET_SIZE, size(D));
 fprintf("耗时: 旋转 %.2f s，缩放 %.3f s\n", rotateSeconds, resizeSeconds);
+fprintf("已保存图形: %s\n", outJpgPath);
