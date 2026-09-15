@@ -9,14 +9,17 @@
 
 **打开实验平台界面**：在编辑器里打开 `imgPlatform.m` 点运行。
 
-**三支验证脚本**，都在仓库根目录（`matlab_test/`）下执行，退出码 0 表示通过：
+**三支验证脚本**，都在仓库根目录（`matlab_test/`）下执行，退出码 0 表示通过。
+`matlab` 没在 PATH 上，先指定二进制路径（与项目 CLAUDE.md 的 Quick Start 同一写法）：
 
-    matlab -batch "run('hw04-imageGeometry/platform/verifyAlgorithms.m')"
-    matlab -batch "run('hw04-imageGeometry/platform/verifyPlatform.m')"
-    matlab -batch "run('hw04-imageGeometry/platform/verifyPlatformGui.m')"
+    export MATLAB=/Applications/MATLAB_R2025b.app/bin/matlab
 
-写的是相对路径，所以**要在仓库根目录执行**。换到别处跑就把 `run(...)` 里
-换成脚本的绝对路径。三者各管一段：
+    "$MATLAB" -batch "run('hw04-imageGeometry/platform/verifyAlgorithms.m')"
+    "$MATLAB" -batch "run('hw04-imageGeometry/platform/verifyPlatform.m')"
+    "$MATLAB" -batch "run('hw04-imageGeometry/platform/verifyPlatformGui.m')"
+
+`run(...)` 里写的是相对路径，所以**要在仓库根目录执行**。换到别处跑就把
+路径换成脚本的绝对路径。三者各管一段：
 
 | 脚本 | 管什么 |
 |---|---|
@@ -31,7 +34,7 @@
 
 - MATLAB R2025b
 - Image Processing Toolbox 25.2
-- Computer Vision Toolbox 25.2（特征提取部分需要）
+- Computer Vision Toolbox 25.2（仅「待实现」的特征提取部分需要，当前 4 个算法只用 IPT）
 
 ## 目录
 
@@ -56,9 +59,11 @@
 | 特征提取 | `featHOG` | `featLBP` | `extractHOGFeatures` / `extractLBPFeatures` | 待实现 |
 
 「待实现」的算法在界面上按登记表列出，但按钮置灰点不动。补上 `+img/` 里的
-实现后界面会自动点亮 —— 「实现了没有」是 `imgRegistry.m` 用 `which`
-现场探测的，不写死在表里，登记表与界面代码都不用改。
+实现后界面会自动点亮 —— 「实现了没有」是**界面与验证脚本**用 `which`
+现场探测的（`imgRegistry.m` 只存元数据，不做探测），不写死在表里，
+登记表与界面代码都不用改。
 
 ## 界面操作
 
-见同目录 `notes.md` 的「三、平台界面」一节。
+见上级目录的 `notes.md` 的「三、平台界面」一节（本文件在 `platform/` 下，
+`notes.md` 在 `hw04-imageGeometry/` 下）。
