@@ -693,7 +693,18 @@ refreshEnableState();
         % 过滤器里就有 *.gif 和 *.tif。抛在 try 外面的话，回调会中途死掉，
         % 留下「图像已换、状态栏没更新、按钮没刷新」的半截状态。
         try
-            raw = imread(fullPath);
+            % imread 只要一个输出时会把调色板丢掉、只返回索引矩阵 ——
+            % 索引值会被当成灰度显示、还喂给所有算法，界面上看不出错。
+            % 打开过滤器里就有 *.png / *.gif / *.bmp，调色板图是常见格式。
+            % 所以取两个输出，有调色板就先转成真彩色。
+            [raw, colorMap] = imread(fullPath);
+            if ~isempty(colorMap)
+                % ind2rgb 返回 [0,1] 的 double，不转回去的话会和登记表里
+                % 按 uint8 量纲给的参数默认值对不上 —— 比如 grayLinearStretch
+                % 的 lowIn/highIn 默认 30/220，套到 [0,1] 的 double 上会把整幅图
+                % 压成黑的。转成 uint8 后与同格式的非调色板图保持一致。
+                raw = im2uint8(ind2rgb(raw, colorMap));
+            end
 
             % +img/ 里的算法开头都有 ~ismatrix(I) 检查，彩色图会直接报错。
             % 这里统一转灰度，并在状态栏说明，免得用户以为显示的就是原色。
