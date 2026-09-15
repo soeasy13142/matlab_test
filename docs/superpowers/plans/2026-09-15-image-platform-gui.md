@@ -42,6 +42,8 @@
 | 滚动面板里放 `uigridlayout` | 布局落地后内层 grid 高度**恒等于面板内高**（678 px），不随内容增长；内容 1046 px 时仍 678 px，超出部分被裁掉 | 左栏子控件用绝对定位 |
 | 滚动面板里绝对定位子控件 | 面板按子控件的高度决定可滚动范围 | 采用此方案 |
 | 布局落地需要时间 | `-batch` 下不 `drawnow`+`pause` 就量几何，会读到 `uipanel` 默认宽 260 而非 190，**据此得出的任何尺寸结论都是假的** | 所有几何实测必须先等布局落地，并核对宽度是否等于 `LEFT_WIDTH` |
+| 可滚动面板子控件的坐标原点 | **在左下角，y 轴向上增长** | `Position` 里 y 递增是从下往上堆。左栏列表必须先算总高再自顶向下排，否则整列颠倒、类别标签落到自己按钮下方 |
+| `close all` 对 `uifigure` | **无效**（实测：前后都是 2 个窗口；`close all force` 才清空） | 冒烟测试要用 `close all force`，否则界面开着时再跑会误判窗口数 |
 | 程序化赋 `uislider.Value` | **不触发** `ValueChangedFcn` | 滑块与数值框双向同步不会死循环 |
 | 工厂函数造 getter / 回调 | 各捕获各的句柄 | 循环里必须用工厂函数，不能直接闭包循环变量 |
 | 真实照片 4284×5712 四个算法 | 合计 0.514 s | 不需要缩略图，直接跑全图 |
@@ -879,16 +881,26 @@ refreshEnableState();
     function buttons = buildAlgorithmList(parentPanel)
         % 左栏是滚动面板，子控件用绝对定位 —— 实测滚动面板里的 uigridlayout
         % 高度恒等于面板内高、不随内容增长，超出的部分被裁掉且滚不到。
+        %
+        % 坐标原点在**左下角**、y 轴向上增长。所以绝不能从 PANEL_PAD 开始
+        % 递增着摆 —— 那样第一条会落在最底下、整个列表上下颠倒，类别标签
+        % 还会跑到它自己那两个按钮的下方。正确做法是先算出内容总高，
+        % 再从顶部往下排。
         buttons          = gobjects(numel(registry), 1);
         categories       = string({registry.Category});
         uniqueCategories = unique(categories, "stable");
 
-        yCursor = PANEL_PAD;
+        contentHeight = PANEL_PAD ...
+            + numel(uniqueCategories) * (LABEL_HEIGHT + 2) ...
+            + numel(registry) * (ROW_HEIGHT + ROW_GAP);
+
+        yCursor = contentHeight;   % 从内容顶端开始，往下（y 减小）排
         for cc = 1:numel(uniqueCategories)
             uilabel(parentPanel, "Text", uniqueCategories(cc), ...
                 "FontWeight", "bold", ...
-                "Position", [PANEL_PAD, yCursor, BUTTON_WIDTH, LABEL_HEIGHT]);
-            yCursor = yCursor + LABEL_HEIGHT + 2;
+                "Position", [PANEL_PAD, yCursor - LABEL_HEIGHT, ...
+                             BUTTON_WIDTH, LABEL_HEIGHT]);
+            yCursor = yCursor - LABEL_HEIGHT - 2;
 
             for kk = 1:numel(registry)
                 if categories(kk) ~= uniqueCategories(cc)
@@ -896,9 +908,10 @@ refreshEnableState();
                 end
                 buttons(kk) = uibutton(parentPanel, ...
                     "Text", registry(kk).Name, ...
-                    "Position", [PANEL_PAD, yCursor, BUTTON_WIDTH, ROW_HEIGHT], ...
+                    "Position", [PANEL_PAD, yCursor - ROW_HEIGHT, ...
+                                 BUTTON_WIDTH, ROW_HEIGHT], ...
                     "ButtonPushedFcn", makeAlgorithmCallback(kk));
-                yCursor = yCursor + ROW_HEIGHT + ROW_GAP;
+                yCursor = yCursor - ROW_HEIGHT - ROW_GAP;
             end
         end
     end
@@ -1119,7 +1132,10 @@ end
 % 为什么不并进 verifyPlatform.m：那个只验登记表、不开界面。两者的失败模式
 % 不同（界面搭错了 vs 表填错了），分开更好定位。
 
-clear; clc; close all;
+% 用 close all force 而不是 close all —— 实测 close all 关不掉 uifigure
+% （前后都是 2 个窗口，加 force 才清空）。若用户正开着界面时跑本脚本，
+% 残留窗口会让下面的窗口计数断言误判，掩盖真实错误。
+clear; clc; close all force;
 
 FIG_NAME_KEYWORD = "图像处理实验平台";
 % 顶栏与参数区的三个非算法按钮，其余 uibutton 都应当是算法按钮
@@ -1141,6 +1157,7 @@ isOurs     = contains(string({allFigures.Name}), FIG_NAME_KEYWORD);
 failureCount = failureCount + checkEq("标题含关键字的窗口数", nnz(isOurs), 1);
 
 if nnz(isOurs) ~= 1
+    close(allFigures(isOurs));   % 先清掉现场，别把窗口留在桌面上
     error("matlab_test:guiSmokeFailed", ...
         "imgPlatform() 应当开出恰好 1 个标题含「%s」的窗口，实测 %d 个。" + ...
         "请检查 imgPlatform.m 里的 uifigure 调用。", FIG_NAME_KEYWORD, nnz(isOurs));
