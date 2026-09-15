@@ -33,8 +33,8 @@ failureCount = 0;
 fprintf("\n【阈值分割】\n");
 failureCount = failureCount + verifyThresholding(IMAGES);
 
-% 后续类别在这里各加一行，形如
-%   failureCount = failureCount + verifyIntensity(IMAGES);
+fprintf("\n【灰度变换】\n");
+failureCount = failureCount + verifyIntensity(IMAGES);
 
 if failureCount > 0
     error("matlab_test:verifyFailed", ...
@@ -70,6 +70,39 @@ for kk = 1:size(images, 1)
     BWIter = img.threshIterative(I);
     nFail = nFail + ~reportRow("阈值分割", "迭代法/" + imgName, "Jaccard", ...
         jaccard(BWIter, BW), JACCARD_MIN_BIN, "", "max");
+end
+end
+
+function nFail = verifyIntensity(images)
+%VERIFYINTENSITY 验证两种灰度变换算法，返回未通过的条数
+
+PSNR_MIN_POINTWISE = 45;    % 逐像素映射类，手写与工具箱应几乎完全一致
+SSIM_MIN_POINTWISE = 0.999;
+GAMMA_TEST         = 0.5;   % gamma < 1，提亮暗部
+
+nFail = 0;
+
+for kk = 1:size(images, 1)
+    imgName = images{kk, 1};
+    I = images{kk, 2};
+
+    % --- 线性拉伸：与 imadjust 对照，区间取直方图 1% 与 99% 分位 ---
+    % stretchlim 返回的是归一化到 [0,1] 的界限，乘满量程换算成灰度值
+    limits = stretchlim(I, [0.01, 0.99]) * double(intmax(class(I)));
+    outOurs = img.grayLinearStretch(I, limits(1), limits(2));
+    outRef  = imadjust(I, stretchlim(I, [0.01, 0.99]), []);
+    nFail = nFail + ~reportRow("灰度变换", "线性拉伸/" + imgName, "PSNR", ...
+        psnr(outOurs, outRef), PSNR_MIN_POINTWISE, "dB", "max");
+    nFail = nFail + ~reportRow("灰度变换", "线性拉伸/" + imgName, "SSIM", ...
+        ssim(outOurs, outRef), SSIM_MIN_POINTWISE, "", "max");
+
+    % --- 伽马变换：与 imadjust 的 gamma 参数对照 ---
+    outOursG = img.grayGamma(I, GAMMA_TEST);
+    refG = imadjust(I, [], [], GAMMA_TEST);
+    nFail = nFail + ~reportRow("灰度变换", "伽马/" + imgName, "PSNR", ...
+        psnr(outOursG, refG), PSNR_MIN_POINTWISE, "dB", "max");
+    nFail = nFail + ~reportRow("灰度变换", "伽马/" + imgName, "SSIM", ...
+        ssim(outOursG, refG), SSIM_MIN_POINTWISE, "", "max");
 end
 end
 
