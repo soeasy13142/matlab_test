@@ -68,6 +68,19 @@ failureCount = failureCount + checkEq("未载图时「打开图像」可点", is
 failureCount = failureCount + checkEq("未载图时「执行」灰",       isEnabled("执行"),     false);
 failureCount = failureCount + checkEq("未载图时「保存结果」灰",   isEnabled("保存结果"), false);
 
+% ---------- 字色只反映「实现了没有」，与有没有载图无关 ----------
+% 刚打开界面时一张图都没有，已实现的那几个算法仍应是黑字，否则用户看不出
+% 哪几个能用。最初把 FontColor 和 Enable 绑在同一个条件上，就是这个毛病，
+% 而只断言 Enable 的检查抓不到它 —— 所以这条要单独测。
+isImplemented = false(numel(registry), 1);
+for kk = 1:numel(registry)
+    isImplemented(kk) = ~isempty(which(registry(kk).Fcn));
+end
+
+nBlackText = nnz(arrayfun(@(btn) isequal(btn.FontColor, [0 0 0]), algorithmButtons));
+failureCount = failureCount + checkEq("未载图时黑字按钮数（应等于已实现数）", ...
+    nBlackText, nnz(isImplemented));
+
 close(fig);
 
 % ---------- 汇总 ----------
