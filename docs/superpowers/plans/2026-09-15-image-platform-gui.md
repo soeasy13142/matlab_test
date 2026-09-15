@@ -1185,8 +1185,8 @@ Expected:
 按钮总数（含执行按钮）        期望 19         实测 19         true
 未载图时算法按钮可点数        期望 0          实测 0          true
 未载图时「打开图像」可点      期望 true       实测 true       true
-未载图时「执行」灰            期望 true       实测 true       true
-未载图时「保存结果」灰        期望 true       实测 true       true
+未载图时「执行」灰            期望 false      实测 false      true
+未载图时「保存结果」灰        期望 false      实测 false      true
 
 全部通过
 ```
