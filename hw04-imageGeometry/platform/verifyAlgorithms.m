@@ -76,7 +76,15 @@ end
 function nFail = verifyIntensity(images)
 %VERIFYINTENSITY 验证两种灰度变换算法，返回未通过的条数
 
-PSNR_MIN_POINTWISE = 45;    % 逐像素映射类，手写与工具箱应几乎完全一致
+% 逐像素映射类的正确实现在理论上应与工具箱逐位一致，阈值要比其他类别紧得多。
+% 实测依据（cameraman/rice）：
+%   正确实现 vs imadjust   PSNR = Inf / 72.03 dB，SSIM = 1.000000 / 0.999996
+%   把 round 换成 floor 的 bug  PSNR = 51.21 dB，SSIM = 0.997379
+% 取 60 dB：正确实现有 12 dB 余量，floor bug 被拦下。SSIM 那条同时也会拦住它
+% （0.9974 < 0.999），两者相关性不完全，一起留着。
+% 注意两条阈值都拦不住「只影响少量像素」的细微 bug——5% 像素差 1 灰阶时
+% PSNR 约 61 dB、SSIM 约 0.9997，两条都会过。
+PSNR_MIN_POINTWISE = 60;
 SSIM_MIN_POINTWISE = 0.999;
 GAMMA_TEST         = 0.5;   % gamma < 1，提亮暗部
 
