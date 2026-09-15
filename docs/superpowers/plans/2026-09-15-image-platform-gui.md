@@ -44,6 +44,9 @@
 | 程序化赋 `uislider.Value` | **不触发** `ValueChangedFcn` | 滑块与数值框双向同步不会死循环 |
 | 工厂函数造 getter / 回调 | 各捕获各的句柄 | 循环里必须用工厂函数，不能直接闭包循环变量 |
 | 真实照片 4284×5712 四个算法 | 合计 0.514 s | 不需要缩略图，直接跑全图 |
+| `-batch` 下 `uifigure` | **能正常创建** | 冒烟测试可以在 `-batch` 里跑，不依赖桌面 |
+| `findall(fig,"Type","uibutton")` | 能找到可滚动面板里的按钮 | 冒烟测试用它清点控件 |
+| `findall` 的遍历深度 | 到第 4 层为止，**第 5 层找不到** | 只能断言按钮层；参数行标签（`panel → paramGrid → rowGrid → label`，第 5 层）够不着 |
 
 ---
 
@@ -54,6 +57,7 @@
 | `hw04-imageGeometry/platform/imgRegistry.m` | 算法登记表：8 类 16 个算法的元数据 + `which` 探测 | 新建 |
 | `hw04-imageGeometry/platform/verifyPlatform.m` | 登记表自洽性检查，非零退出码表示不通过 | 新建 |
 | `hw04-imageGeometry/platform/imgPlatform.m` | 可视化界面：算法列表、图像管理、参数调节、结果展示 | 新建 |
+| `hw04-imageGeometry/platform/verifyPlatformGui.m` | 界面冒烟测试：构造界面、断言控件结构、关闭 | 新建 |
 | `hw04-imageGeometry/platform/README.md` | 平台说明、算法清单、运行方式 | 修改 |
 | `hw04-imageGeometry/notes.md` | 追加「平台界面」一节，含运行时操作清单 | 修改 |
 
@@ -411,7 +415,12 @@ git commit -m "feat: 算法登记表与自检脚本，16 个算法按 which 现�
 
 **Interfaces:**
 - Consumes: `imgRegistry()`（Task 1）
-- Produces: `imgPlatform()` — 无入参无返回，调用即开界面。
+- Produces:
+  - `imgPlatform()` — 无入参无返回，调用即开界面。约定：窗口标题含
+    `"图像处理实验平台"`；左栏每个算法的按钮 `Text` 等于 `registry.Name`；
+    顶栏与参数区另有三个按钮，文字为 `"打开图像"` / `"保存结果"` / `"执行"`。
+    这三条约定是 Task 2 Step 2 的冒烟测试赖以定位控件的东西，改动要同步。
+  - `verifyPlatformGui.m` 脚本，退出码 0 表示界面结构符合预期。
 
 - [ ] **Step 1: 写 imgPlatform.m**
 
@@ -839,7 +848,144 @@ end
 end
 ```
 
-- [ ] **Step 2: 静态检查**
+- [ ] **Step 2: 写 verifyPlatformGui.m 界面冒烟测试**
+
+界面回调没法自动点，但**界面结构可以**。这个脚本程序化构造界面、清点控件、
+断言初始灰显状态，然后关掉窗口。它能替子代理把守「界面搭对了没有」这道门，
+剩下真正需要人眼的（图像显示效果、滑块手感）才留给人工清单。
+
+创建 `hw04-imageGeometry/platform/verifyPlatformGui.m`：
+
+```matlab
+% 冒烟测试 imgPlatform.m 的界面结构
+%
+% 运行：在编辑器里点运行，或
+%   matlab -batch "run('<仓库根>/hw04-imageGeometry/platform/verifyPlatformGui.m')"
+% 退出码 0 表示界面结构符合预期。
+%
+% 预期结果：程序化构造界面，按控件文字与 Enable 状态断言结构，然后关闭窗口。
+%          命令窗口逐行打印检查项、期望值与实测值，全部通过时打印「全部通过」。
+%
+% 覆盖不到的部分：界面长得好不好看、图像显示效果、拖动滑块的手感、
+% 报错弹窗的内容 —— 这些要人眼看，见 notes.md 的运行时操作清单。
+%
+% 为什么不并进 verifyPlatform.m：那个只验登记表、不开界面。两者的失败模式
+% 不同（界面搭错了 vs 表填错了），分开更好定位。
+
+clear; clc; close all;
+
+FIG_NAME_KEYWORD = "图像处理实验平台";
+% 顶栏与参数区的三个非算法按钮，其余 uibutton 都应当是算法按钮
+CONTROL_BUTTONS  = ["打开图像", "保存结果", "执行"];
+
+registry      = imgRegistry();
+expectedNames = string({registry.Name});
+
+failureCount = 0;
+
+% ---------- 构造界面 ----------
+imgPlatform();
+drawnow;
+
+% 按窗口标题找我们开的那个窗口。用 findall(groot) 而不是 gcf：
+% -batch 下若有残留窗口，gcf 拿到的不一定是这一个
+allFigures = findall(groot, "Type", "figure");
+isOurs     = contains(string({allFigures.Name}), FIG_NAME_KEYWORD);
+failureCount = failureCount + checkEq("标题含关键字的窗口数", nnz(isOurs), 1);
+
+if nnz(isOurs) ~= 1
+    error("matlab_test:guiSmokeFailed", ...
+        "imgPlatform() 应当开出恰好 1 个标题含「%s」的窗口，实测 %d 个。" + ...
+        "请检查 imgPlatform.m 里的 uifigure 调用。", FIG_NAME_KEYWORD, nnz(isOurs));
+end
+fig = allFigures(find(isOurs, 1));
+
+% ---------- 控件清点 ----------
+% findall 能穿进可滚动面板，深度到第 4 层为止。下面的断言都取第 3~4 层的按钮。
+% 参数行里的标签在第 5 层，findall 够不着，所以不在这里断言 —— 见文件头说明。
+buttons    = findall(fig, "Type", "uibutton");
+buttonText = string({buttons.Text});
+
+algorithmNames = setdiff(buttonText, CONTROL_BUTTONS);
+failureCount = failureCount + checkEq("算法按钮数", numel(algorithmNames), numel(registry));
+failureCount = failureCount + checkEq("算法按钮名与登记表一致", ...
+    isempty(setxor(algorithmNames, expectedNames)), true);
+
+% 「执行」按钮由 buildParamControls 创建。总数对不上说明它没跑或跑挂了
+failureCount = failureCount + checkEq("按钮总数（含执行按钮）", ...
+    numel(buttons), numel(registry) + numel(CONTROL_BUTTONS));
+
+% ---------- 初始灰显状态 ----------
+% 还没载入图像，所以 16 个算法按钮全灰，「执行」「保存结果」也灰，
+% 「打开图像」可点。这是 refreshEnableState 的核心行为。
+algorithmButtons  = buttons(ismember(buttonText, expectedNames));
+nAlgorithmEnabled = nnz(string({algorithmButtons.Enable}) == "on");
+failureCount = failureCount + checkEq("未载图时算法按钮可点数", nAlgorithmEnabled, 0);
+
+isEnabled = @(label) string(buttons(buttonText == label).Enable) == "on";
+failureCount = failureCount + checkEq("未载图时「打开图像」可点", isEnabled("打开图像"), true);
+failureCount = failureCount + checkEq("未载图时「执行」灰",       isEnabled("执行"),     false);
+failureCount = failureCount + checkEq("未载图时「保存结果」灰",   isEnabled("保存结果"), false);
+
+close(fig);
+
+% ---------- 汇总 ----------
+if failureCount > 0
+    error("matlab_test:guiSmokeFailed", ...
+        "共 %d 项检查未通过，逐条明细见上方标了 false 的行。", failureCount);
+end
+
+fprintf("\n全部通过\n");
+
+% ==================== 局部函数 ====================
+
+function nFail = checkEq(label, actual, expected)
+%CHECKEQ 打印一项检查并判定是否与期望相等，返回未通过条数（0 或 1）
+%
+%   与 verifyPlatform.m 里的同名函数职责相同，各自独立 —— MATLAB 的
+%   局部函数不跨文件共享。两处各十余行，暂不提升为公共函数。
+
+isPass = isequal(actual, expected);
+
+fprintf("%-28s 期望 %-10s 实测 %-10s %s\n", ...
+    label, string(expected), string(actual), string(isPass));
+
+if ~isPass
+    fprintf("    ^ 未通过: %s 应为 %s，实测 %s\n", ...
+        label, string(expected), string(actual));
+end
+
+nFail = ~isPass;
+end
+```
+
+- [ ] **Step 3: 跑冒烟测试**
+
+用 MATLAB MCP 的 `run_matlab_file` 跑 `verifyPlatformGui.m`，或命令行：
+
+```bash
+cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charliepan/Downloads/matlab_test/hw04-imageGeometry/platform/verifyPlatformGui.m')"
+```
+
+Expected:
+```
+标题含关键字的窗口数          期望 1          实测 1          true
+算法按钮数                    期望 16         实测 16         true
+算法按钮名与登记表一致        期望 true       实测 true       true
+按钮总数（含执行按钮）        期望 19         实测 19         true
+未载图时算法按钮可点数        期望 0          实测 0          true
+未载图时「打开图像」可点      期望 true       实测 true       true
+未载图时「执行」灰            期望 true       实测 true       true
+未载图时「保存结果」灰        期望 true       实测 true       true
+
+全部通过
+```
+
+退出码 0。若「算法按钮数」不是 16，查 `buildAlgorithmList` 的双层循环有没有
+漏掉类别；若「未载图时算法按钮可点数」不是 0，查 `refreshEnableState` 里
+`hasImage && isImplemented` 的两个条件是不是写成了 `||`。
+
+- [ ] **Step 4: 静态检查**
 
 用 MATLAB MCP 的 `check_matlab_code` 检查
 `hw04-imageGeometry/platform/imgPlatform.m`。
@@ -849,30 +995,31 @@ Expected: 没有报错级问题。若提示 `paramGetters`、`executeButton` 等
 但若提示 `end` 不匹配，说明嵌套函数与局部函数的分界写错了 ——
 嵌套函数必须在 `imgPlatform` 的 `end` **之前**，局部函数在**之后**。
 
-- [ ] **Step 3: 打开界面，逐条核对**
+- [ ] **Step 4（人工）: 打开界面看视觉部分**
 
-用 MATLAB MCP 的 `evaluate_matlab_code` 跑：
+前面两步都是子代理能自动跑的。这一步开始要人眼。用 MATLAB MCP 的
+`evaluate_matlab_code` 跑：
 
 ```matlab
 cd('/Users/charliepan/Downloads/matlab_test/hw04-imageGeometry/platform');
 imgPlatform();
 ```
 
-界面应在 MATLAB 桌面弹出。对着下面这张清单逐条看：
+界面应在 MATLAB 桌面弹出。结构性问题冒烟测试已经管了，这里只看**冒烟测试
+够不着的**：
 
 | # | 该看到什么 |
 |---|---|
 | 1 | 窗口标题含「图像处理实验平台  Plot by 顾皓天0242010213」 |
-| 2 | 左栏从上到下 8 个类别：灰度变换、阈值分割、几何变换、直方图均衡、空域滤波、频域滤波、边缘检测、特征提取 |
-| 3 | 灰度变换的「线性拉伸」「伽马变换」与阈值分割的「Otsu」「迭代法」是**黑字**，但**按钮还是灰的**（还没载入图像） |
-| 4 | 其余 12 个按钮是**灰字且点不动** |
+| 2 | 左栏 8 个类别从上到下依次是：灰度变换、阈值分割、几何变换、直方图均衡、空域滤波、频域滤波、边缘检测、特征提取 |
+| 3 | 未实现的 12 个按钮是**灰字**，已实现的 4 个是**黑字**（但都还点不动 —— 因为还没载图） |
+| 4 | 左栏放不下时能滚动 |
 | 5 | 参数区显示「请在左侧选择一个算法」，下面有个灰的「执行」按钮 |
-| 6 | 顶栏「保存结果」是灰的 |
 
-Expected: 6 条全中。第 3 条容易搞错 —— 注意「未实现」和「没有图像」是两回事，
-`refreshEnableState` 里两者都要求才点亮。
+第 3 条容易搞错 ——「未实现」和「没有图像」是两回事，`refreshEnableState`
+里两个条件都满足按钮才可点，此刻是「已实现但没图」，所以黑字但不可点。
 
-- [ ] **Step 4: 核对打开图像的行为**
+- [ ] **Step 5（人工）: 核对打开图像的行为**
 
 在界面上点「打开图像」，选 `hw04-imageGeometry/photo.jpg`（彩色 5712×4284）。
 
@@ -886,7 +1033,7 @@ Expected:
 （那是个彩色 JPEG 图形文件）确认换图正常：原图区换成新图、结果区被清空、
 信息行回到「尚未执行」。
 
-- [ ] **Step 5: 核对参数调节与执行**
+- [ ] **Step 6（人工）: 核对参数调节与执行**
 
 **点一下「伽马变换」**，核对：
 - 参数区出现 `gamma` 一行，滑块在 0.05–3 之间、当前值 0.50，右侧数值框也是 0.50
@@ -899,7 +1046,7 @@ Expected:
 再点「Otsu」（它没有入参），参数区应显示「该算法无可调参数」，执行后结果区
 是二值图，信息行的类型是 `logical`。
 
-- [ ] **Step 6: 核对算法报错会弹窗，而不是静默失败**
+- [ ] **Step 7（人工）: 核对算法报错会弹窗，而不是静默失败**
 
 点「线性拉伸」，它的两个参数 `lowIn` / `highIn` 滑杆范围都是 0–255，
 把 `lowIn` 拖到 200、`highIn` 拖到 100（即低界高于高界），点「执行」。
@@ -912,11 +1059,14 @@ Expected: 弹出消息框，标题「算法执行失败」，正文含
 
 把 `lowIn` 拖回 30 再执行一次，应正常出结果。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 8: 提交**
+
+提交前确认 Step 3 的冒烟测试退出码 0、Step 4 的静态检查无报错级问题。
+人工核对（Step 4~7）若有不过的，先修再提交。
 
 ```bash
-git add hw04-imageGeometry/platform/imgPlatform.m
-git commit -m "feat: 图像处理平台可视化界面，算法列表按登记表动态生成并灰显未实现项"
+git add hw04-imageGeometry/platform/imgPlatform.m hw04-imageGeometry/platform/verifyPlatformGui.m
+git commit -m "feat: 图像处理平台可视化界面，算法列表按登记表生成并灰显未实现项，附界面冒烟测试"
 ```
 
 ---
@@ -950,15 +1100,23 @@ git commit -m "feat: 图像处理平台可视化界面，算法列表按登记�
 
 **打开实验平台界面**：在编辑器里打开 `imgPlatform.m` 点运行。
 
-**验证手写算法的正确性**：
+**三支验证脚本**，都在仓库根目录（`matlab_test/`）下执行，退出码 0 表示通过：
 
     matlab -batch "run('hw04-imageGeometry/platform/verifyAlgorithms.m')"
-
-**检查算法登记表是否自洽**：
-
     matlab -batch "run('hw04-imageGeometry/platform/verifyPlatform.m')"
+    matlab -batch "run('hw04-imageGeometry/platform/verifyPlatformGui.m')"
 
-后两者退出码 0 表示全部通过。
+写的是相对路径，所以**要在仓库根目录执行**。换到别处跑就把 `run(...)` 里
+换成脚本的绝对路径。三者各管一段：
+
+| 脚本 | 管什么 |
+|---|---|
+| `verifyAlgorithms.m` | 手写算法与图像处理工具箱的输出是否一致 |
+| `verifyPlatform.m` | 算法登记表是否自洽（不开界面） |
+| `verifyPlatformGui.m` | 界面结构是否正确（会开界面再关掉） |
+
+界面上需要人眼判断的部分（图像显示效果、拖动滑块的手感、报错弹窗内容）
+三支脚本都覆盖不到，见 `notes.md` 的运行时操作清单。
 
 ## 依赖
 
@@ -972,6 +1130,7 @@ git commit -m "feat: 图像处理平台可视化界面，算法列表按登记�
     imgRegistry.m        算法登记表，8 类 16 个算法的元数据
     verifyAlgorithms.m   验证手写算法与工具箱的一致性
     verifyPlatform.m     检查登记表自洽
+    verifyPlatformGui.m  界面结构冒烟测试
     +img/                手写算法实现，调用写成 img.函数名(...)
 
 ## 算法清单
@@ -996,14 +1155,22 @@ git commit -m "feat: 图像处理平台可视化界面，算法列表按登记�
 见同目录 `notes.md` 的「三、平台界面」一节。
 ```
 
-- [ ] **Step 2: 跑一次两个验证脚本，确认 README 里的命令是对的**
+- [ ] **Step 2: 从仓库根目录跑一次三支脚本，确认 README 里的命令是对的**
+
+README 里改成了「从仓库根目录执行相对路径」，这一步就**照 README 的原样**验证一遍：
 
 ```bash
-cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charliepan/Downloads/matlab_test/hw04-imageGeometry/platform/verifyPlatform.m')" && echo "verifyPlatform 退出码 0"
-cd /tmp && /Applications/MATLAB_R2025b.app/bin/matlab -batch "run('/Users/charliepan/Downloads/matlab_test/hw04-imageGeometry/platform/verifyAlgorithms.m')" && echo "verifyAlgorithms 退出码 0"
+cd /Users/charliepan/Downloads/matlab_test && \
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "run('hw04-imageGeometry/platform/verifyAlgorithms.m')" && \
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "run('hw04-imageGeometry/platform/verifyPlatform.m')" && \
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "run('hw04-imageGeometry/platform/verifyPlatformGui.m')" && \
+echo "三支脚本退出码全为 0"
 ```
 
-Expected: 两条都打印「全部通过」并 echo 出退出码 0。
+Expected: 三支都打印「全部通过」，最后 echo 出「三支脚本退出码全为 0」。
+
+这一步是在还上一轮遗留的账：旧的 README 写的是同样的相对路径，但实际验证时
+一直是从 `/tmp` 用绝对路径跑的，命令照着抄会失败。现在两者对齐了。
 
 - [ ] **Step 3: 在 notes.md 末尾追加「平台界面」一节**
 
@@ -1090,11 +1257,20 @@ Expected: 两条都打印「全部通过」并 echo 出退出码 0。
 8. **保存结果。** 点「保存结果」，对话框的文件类型下拉里有 BMP / JPEG / PNG /
    TIFF / GIF 五种格式，存成 PNG 后状态栏显示保存路径。
 
-### 6. 界面覆盖不到的部分
+### 6. 三支验证脚本各管一段
 
-界面回调没法自动点，所以 `verifyPlatform.m` 只验登记表自洽（8 类 × 2 无缺漏、
-`Fcn` 前缀、参数默认值不越界、`Kind` 与 `Output` 取值合法），
-界面本身的正确性靠上面这份清单人工过一遍。
+| 脚本 | 管什么 | 怎么跑 |
+|---|---|---|
+| `verifyAlgorithms.m` | 手写算法与工具箱的输出是否一致 | 自动，退出码 0 |
+| `verifyPlatform.m` | 登记表是否自洽：8 类 × 2 无缺漏、`Fcn` 前缀、参数默认值不越界、`Kind` 与 `Output` 取值合法 | 自动，退出码 0 |
+| `verifyPlatformGui.m` | 界面结构：窗口数、16 个算法按钮与登记表名称一致、未载图时全部置灰 | 自动，退出码 0 |
+
+`verifyPlatformGui.m` 是程序化构造界面再清点控件的冒烟测试，所以界面「搭得对不对」
+也有自动门禁，不是全靠人看。它靠 `findall` 找控件 —— 实测 `findall` 能穿进可滚动
+面板，但**只到第 4 层**，参数行里的标签在第 5 层够不着，所以断言只覆盖按钮层。
+
+剩下真正要人眼的部分（图像显示效果、拖动滑块的手感、报错弹窗内容、
+保存对话框的格式列表）靠上面第 5 节那份清单过一遍。
 ```
 
 - [ ] **Step 4: 提交**
@@ -1110,14 +1286,15 @@ git commit -m "docs: 平台 README 与界面运行清单，修正算法数量与
 
 对照 spec 的验收标准：
 
-1. 点运行 `imgPlatform.m` 能开出界面，不报错 → Task 2 Step 3
-2. 打开彩色照片自动转灰度并标注 → Task 2 Step 4
-3. 4 个已实现算法都能选中、跑到结果、显示耗时与尺寸 → Task 2 Step 5
-4. 6 类未实现算法的按钮为灰、点不动 → Task 2 Step 3、Step 4
+1. 点运行 `imgPlatform.m` 能开出界面，不报错 → Task 2 Step 3（自动）、Step 4（人工）
+2. 打开彩色照片自动转灰度并标注 → Task 2 Step 5（人工）
+3. 4 个已实现算法都能选中、跑到结果、显示耗时与尺寸 → Task 2 Step 6（人工）
+4. 6 类未实现算法的按钮为灰、点不动 → Task 2 Step 3（自动断言初始状态）、
+   Step 4（人工看灰字）
 5. 保存结果弹出含 5 种格式的对话框并成功写文件 → Task 2 的 `onSaveResult`，
-   人工清单第 8 条覆盖
+   notes.md 运行时操作清单第 8 条覆盖
 6. `verifyPlatform.m` 退出码 0 → Task 1 Step 4、Task 3 Step 2
-7. 每个函数有 H1 行 + 功能说明 + 输入输出 + 一个调用示例 → 三个新文件的注释
+7. 每个函数有 H1 行 + 功能说明 + 输入输出 + 一个调用示例 → 四个新文件的注释
 8. 跑通即按 `git.md` 的粒度提交 → 每个 Task 的最后一步
 
 ## 已知限制
@@ -1133,7 +1310,9 @@ git commit -m "docs: 平台 README 与界面运行清单，修正算法数量与
   4284×5712 送进 `uiaxes` 的时间没有单独测过。若实际卡顿明显，
   退回「显示前先 `imresize` 到千像素级、算法仍跑全图」即可，
   只影响显示不影响结果。
-- **`verifyPlatform.m` 的 `checkEq` 与 `verifyAlgorithms.m` 的 `reportRow`
-  有部分重复。** MATLAB 的局部函数不跨文件共享，真要合并得提升为同目录的
-  独立函数并改动已跑通的 `verifyAlgorithms.m`。两处各约 15 行，
+- **`checkEq` / `reportRow` 这类判定函数在每个验证脚本里各写一份。**
+  `verifyAlgorithms.m` 有 `reportRow`，`verifyPlatform.m` 与
+  `verifyPlatformGui.m` 各有一个 `checkEq`，三处职责相近。
+  MATLAB 的局部函数不跨文件共享，真要合并得提升为同目录的独立函数，
+  并改动已跑通的 `verifyAlgorithms.m`。三处各约 15 行，
   暂不合并，避免动到已验证的代码。
