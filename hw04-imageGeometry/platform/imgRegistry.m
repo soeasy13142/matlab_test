@@ -15,11 +15,12 @@ function registry = imgRegistry()
 %       无
 %   输出
 %       registry    16×1 的 struct 数组，字段：
-%                     Category  类别名
-%                     Name      算法显示名
-%                     Fcn       包函数名，形如 "img.grayGamma"
-%                     Params    参数定义 cell 数组，无参数时为 {}
-%                     Output    输出类型，"image" / "binary" / "vector"
+%                     Category    类别名
+%                     Name        算法显示名
+%                     Fcn         包函数名，形如 "img.grayGamma"
+%                     Params      参数定义 cell 数组，无参数时为 {}
+%                     Output      输出类型，"image" / "binary" / "vector"
+%                     ExtraLabel  第二个返回值的显示名，无则为 ""
 %
 %   调用示例
 %       registry = imgRegistry();
@@ -34,10 +35,10 @@ registry = [ ...
         pSlider("gamma", 0.5, 0.05, 3)}, ...
         "image"); ...
     entry("阈值分割", "Otsu", "img.threshOtsu", {}, ...
-        "binary"); ...
+        "binary", "阈值"); ...
     entry("阈值分割", "迭代法", "img.threshIterative", { ...
         pEdit("tol", 1e-6, 1e-9, 1e-2)}, ...
-        "binary"); ...
+        "binary", "阈值"); ...
     entry("几何变换", "旋转", "img.geomRotate", { ...
         pSlider("angle", 50, -180, 180), ...
         pChoice("method", "bicubic", ["nearest", "bilinear", "bicubic"])}, ...
@@ -84,18 +85,51 @@ end
 
 % ==================== 局部函数 ====================
 
-function e = entry(category, name, fcn, params, output)
+function e = entry(category, name, fcn, params, output, extraLabel)
 %ENTRY 组装一条算法登记项
 %
 %   Params 字段用 {params} 再包一层 cell，否则 struct 会把 params 的每个元素
 %   当成数组元素展开，16 条登记项就拼不成 struct 数组了。
+%
+%   extraLabel 可选，第二个返回值的显示名。只有 threshOtsu 与 threshIterative
+%   返回 [BW, level] 两个值，那个 level 是阈值分割这道题的核心数字，界面上要
+%   显示出来，所以需要在这里登记它叫什么。其余算法只返回一个值，省略即可。
+%
+%   输入
+%       category    类别名
+%       name        算法显示名
+%       fcn         包函数名
+%       params      参数定义 cell 数组
+%       output      输出类型
+%       extraLabel  可选，第二个返回值的显示名，默认 ""
+%   输出
+%       e           一条登记项 struct
+%
+%   调用示例
+%       e = entry("阈值分割", "Otsu", "img.threshOtsu", {}, "binary", "阈值");
+
+narginchk(5, 6);
+if nargin < 6
+    extraLabel = "";
+end
 
 e = struct("Category", category, "Name", name, "Fcn", fcn, ...
-    "Params", {params}, "Output", output);
+    "Params", {params}, "Output", output, "ExtraLabel", extraLabel);
 end
 
 function p = pSlider(name, defaultValue, minValue, maxValue)
 %PSLIDER 范围明确的数值参数，界面上给滑块 + 数值框，两者双向同步
+%
+%   输入
+%       name            参数名，与 +img/ 里的形参名一致
+%       defaultValue    默认值，必须落在 [minValue, maxValue] 内
+%       minValue        下界
+%       maxValue        上界
+%   输出
+%       p               参数定义 struct，Kind 为 "slider"
+%
+%   调用示例
+%       p = pSlider("gamma", 0.5, 0.05, 3);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "slider", ...
     "Min", minValue, "Max", maxValue);
@@ -106,6 +140,17 @@ function p = pEdit(name, defaultValue, minValue, maxValue)
 %
 %   滑块在 1e-6 这种量级上没法拖，所以不给滑块。范围仍然记下来，
 %   供 verifyPlatform.m 检查默认值是否越界。
+%
+%   输入
+%       name            参数名
+%       defaultValue    默认值，必须落在 [minValue, maxValue] 内
+%       minValue        下界
+%       maxValue        上界
+%   输出
+%       p               参数定义 struct，Kind 为 "edit"
+%
+%   调用示例
+%       p = pEdit("tol", 1e-6, 1e-9, 1e-2);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "edit", ...
     "Min", minValue, "Max", maxValue);
@@ -113,6 +158,16 @@ end
 
 function p = pChoice(name, defaultValue, options)
 %PCHOICE 枚举字符串参数，界面上给下拉框
+%
+%   输入
+%       name            参数名
+%       defaultValue    默认选项，必须是 options 里的一个
+%       options         候选值，字符串数组
+%   输出
+%       p               参数定义 struct，Kind 为 "choice"
+%
+%   调用示例
+%       p = pChoice("method", "bicubic", ["nearest", "bilinear", "bicubic"]);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "choice", ...
     "Options", options);
@@ -122,6 +177,22 @@ function p = pSize(name, defaultValue, minValue, maxValue)
 %PSIZE 二元素尺寸参数，界面上给两个数值框
 %
 %   Min / Max 是标量，对两个分量都适用。
+%
+%   defaultValue 的分量顺序随算法而定，界面按原样透传给算法，不做解释：
+%     targetSize  [行数, 列数] —— 与 imresize 的口径一致
+%     numTiles    [行块数, 列块数] —— CLAHE 的分块数
+%   上游 spec 与 +img/ 里对应函数的形参定义都以「先行后列」为准。
+%
+%   输入
+%       name            参数名
+%       defaultValue    [第一分量, 第二分量]，都必须落在 [minValue, maxValue] 内
+%       minValue        下界，对两个分量都适用
+%       maxValue        上界，对两个分量都适用
+%   输出
+%       p               参数定义 struct，Kind 为 "size"
+%
+%   调用示例
+%       p = pSize("targetSize", [120, 200], 1, 4096);
 
 p = struct("Name", name, "Default", defaultValue, "Kind", "size", ...
     "Min", minValue, "Max", maxValue);

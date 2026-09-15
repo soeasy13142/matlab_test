@@ -36,16 +36,22 @@ failureCount = failureCount + checkEq("每类算法数（最小值）", ...
     min(perCategory), EXPECTED_PER_CAT);
 
 % ---------- 函数名与输出类型 ----------
-badPrefix = nnz(~startsWith(string({registry.Fcn}), "img."));
+fcnNames  = string({registry.Fcn});
+badPrefix = nnz(~startsWith(fcnNames, "img."));
 failureCount = failureCount + checkEq("Fcn 前缀不合规条数", badPrefix, 0);
+
+% 重名会让「已实现」计数重复，界面上还会多出一个同名按钮
+duplicateFcn = numel(fcnNames) - numel(unique(fcnNames));
+failureCount = failureCount + checkEq("Fcn 重名条数", duplicateFcn, 0);
 
 badOutput = nnz(~ismember(string({registry.Output}), VALID_OUTPUTS));
 failureCount = failureCount + checkEq("Output 取值不合规条数", badOutput, 0);
 
 % ---------- 参数定义 ----------
-badKind        = 0;
-badRange       = 0;
-missingOptions = 0;
+badKind          = 0;
+badRange         = 0;
+missingOptions   = 0;
+badChoiceDefault = 0;
 
 for kk = 1:numel(registry)
     params = registry(kk).Params;
@@ -55,18 +61,24 @@ for kk = 1:numel(registry)
         if ~ismember(string(p.Kind), VALID_KINDS)
             badKind = badKind + 1;
         end
-        if string(p.Kind) == "choice" && ~isfield(p, "Options")
-            missingOptions = missingOptions + 1;
-        end
         % Min / Max 是标量，Default 可能是二元素（size 类），逐元素比
         if isfield(p, "Min") && any(p.Default < p.Min | p.Default > p.Max)
             badRange = badRange + 1;
+        end
+        if string(p.Kind) == "choice"
+            if ~isfield(p, "Options")
+                missingOptions = missingOptions + 1;
+            elseif ~ismember(string(p.Default), string(p.Options))
+                % 默认值打错字的话，界面上表现为下拉框选不中或静默退回第一项
+                badChoiceDefault = badChoiceDefault + 1;
+            end
         end
     end
 end
 
 failureCount = failureCount + checkEq("Kind 取值不合规条数", badKind, 0);
 failureCount = failureCount + checkEq("choice 缺 Options 条数", missingOptions, 0);
+failureCount = failureCount + checkEq("choice 默认值不在选项里条数", badChoiceDefault, 0);
 failureCount = failureCount + checkEq("默认值越界条数", badRange, 0);
 
 % ---------- 实现情况（仅供参考，不算通过与否）----------
@@ -95,6 +107,16 @@ function nFail = checkEq(label, actual, expected)
 %
 %   不抛错。失败只打印明细，由脚本体累加后在末尾统一报错，
 %   这样一次运行能看到全部未通过项。
+%
+%   输入
+%       label       检查项名称
+%       actual      实测值
+%       expected    期望值
+%   输出
+%       nFail       未通过条数，0 或 1
+%
+%   调用示例
+%       failureCount = failureCount + checkEq("算法总数", numel(registry), 16);
 
 isPass = isequal(actual, expected);
 
